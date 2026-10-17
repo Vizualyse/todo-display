@@ -73,7 +73,7 @@ export default function App() {
       {music.available && (
         <MusicButton open={popover === 'music'} playing={music.playing} onClick={() => setPopover(popover === 'music' ? null : 'music')} />
       )}
-      {popover === 'music' && music.available && <MusicMenu music={music} onClose={() => setPopover(null)} />}
+      {popover === 'music' && music.available && <MusicMenu music={music} sound={sound} onClose={() => setPopover(null)} />}
       <MenuButton open={menuOpen} onClick={() => setMenuOpen(!menuOpen)} />
       {menuOpen && (
         <TabMenu

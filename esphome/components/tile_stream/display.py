@@ -11,6 +11,7 @@ AUTO_LOAD = ["network"]
 tile_stream_ns = cg.esphome_ns.namespace("tile_stream")
 TileStreamDisplay = tile_stream_ns.class_("TileStreamDisplay", display.Display)
 SoundTrigger = tile_stream_ns.class_("SoundTrigger", automation.Trigger.template(cg.std_string))
+VolumeTrigger = tile_stream_ns.class_("VolumeTrigger", automation.Trigger.template(cg.float_))
 
 CONF_PCLK_FREQUENCY = "pclk_frequency"
 CONF_PCLK_INVERTED = "pclk_inverted"
@@ -21,6 +22,7 @@ CONF_VSYNC_PIN = "vsync_pin"
 CONF_PCLK_PIN = "pclk_pin"
 CONF_DATA_PINS = "data_pins"
 CONF_ON_SOUND = "on_sound"
+CONF_ON_VOLUME = "on_volume"
 TIMINGS = {
     # Defaults are Elecrow's published timings for the CrowPanel 7.0" (800x480).
     "hsync_pulse_width": 48,
@@ -73,6 +75,10 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_ON_SOUND): automation.validate_automation(
                 {cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(SoundTrigger)}
             ),
+            # Runs with `volume` (0..1) when the page sets the panel's master volume.
+            cv.Optional(CONF_ON_VOLUME): automation.validate_automation(
+                {cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(VolumeTrigger)}
+            ),
             **{
                 cv.Optional(name, default=default): cv.int_range(min=0, max=255)
                 for name, default in TIMINGS.items()
@@ -99,6 +105,9 @@ async def to_code(config):
     for i, pin in enumerate(config[CONF_DATA_PINS]):
         cg.add(var.set_data_pin(i, pin))
     cg.add(var.set_timings(*(config[name] for name in TIMINGS)))
+    for conf in config.get(CONF_ON_VOLUME, []):
+        trigger = cg.new_Pvariable(conf[CONF_TRIGGER_ID], var)
+        await automation.build_automation(trigger, [(cg.float_, "volume")], conf)
     for conf in config.get(CONF_ON_SOUND, []):
         trigger = cg.new_Pvariable(conf[CONF_TRIGGER_ID], var)
         await automation.build_automation(

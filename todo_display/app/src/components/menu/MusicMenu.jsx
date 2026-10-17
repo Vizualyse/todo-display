@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react'
 import { MusicIcon, PauseIcon, PlayIcon, SkipNextIcon, SkipPrevIcon } from '../ui/icons.jsx'
 
 /** A music note in a circle, left of the heart. Opens the now-playing popover. */
@@ -19,14 +18,12 @@ export function MusicButton({ open, playing, onClick }) {
 
 /**
  * Now playing on the panel's Music Assistant player (Spotify Connect included), with
- * transport controls and volume. The volume is sent when the finger lifts, not on
- * every step of the drag.
+ * transport controls. The slider is the panel's volume, the same one as in the heart
+ * menu (it scales every sound); it is sent when the finger lifts.
  */
-export function MusicMenu({ music, onClose }) {
-  const [volume, setVolume] = useState(music.volume ?? 0)
-  useEffect(() => setVolume(music.volume ?? 0), [music.volume])
+export function MusicMenu({ music, sound, onClose }) {
   const round = 'grid place-items-center rounded-full'
-  const percent = Math.round(volume * 100)
+  const percent = sound.volume
 
   return (
     <>
@@ -65,8 +62,8 @@ export function MusicMenu({ music, onClose }) {
             max={100}
             step={5}
             value={percent}
-            onChange={(e) => setVolume(Number(e.target.value) / 100)}
-            onPointerUp={(e) => music.setVolume(Number(e.currentTarget.value) / 100)}
+            onChange={(e) => sound.setVolume(Number(e.target.value))}
+            onPointerUp={(e) => sound.commitVolume(Number(e.currentTarget.value), { click: false })}
             className="volume-slider w-full"
             style={{ '--fill': `${percent}%` }}
           />

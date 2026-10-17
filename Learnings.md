@@ -113,6 +113,11 @@ CrowPanel 7.0" unless marked otherwise.
   chimes, `timeout: never`) and a music source, all at 48kHz so no `resampler` is
   needed; the chimes are synthesised at 48kHz to match. Don't name the mixer
   `mixer`: an ID can't equal an integration name. Flash use went 54% -> 69%.
+- **A mixer source speaker's volume is the amp's volume.** `SourceSpeaker::set_volume`
+  forwards to the output speaker, so the music player's volume scales clicks and
+  chimes too. We lean into it: that volume is the panel's master volume, the page
+  sets it (`v <n>`) and the panel reports every change back (`on_volume`), so the
+  page and Music Assistant never disagree. Effects are rendered at full scale.
 - **Backlight (GPIO2) is off unless a config drives it.** A test firmware without the
   `ledc` backlight light looks blank even though the framebuffer is drawn.
 - **RGB565 bands gradients.** Design with flat colours. The old dark radial

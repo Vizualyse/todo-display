@@ -7,6 +7,7 @@ import sharp from 'sharp'
 import { createAlarmStore, parseAlarm, startAlarmScheduler } from './alarms.js'
 import { createHomeAssistantSource } from './ha.js'
 import { createMockSource } from './mock.js'
+import { createSettings } from './settings.js'
 import { createRenderer, HEIGHT, WIDTH } from './renderer.js'
 import { attachTileStream } from './stream.js'
 
@@ -96,6 +97,12 @@ function musicState() {
     art: picture ? crypto.createHash('sha1').update(picture).digest('hex').slice(0, 12) : null,
   }
 }
+
+const settings = createSettings({ file: process.env.SETTINGS_FILE || '/data/settings.json', log })
+const broadcastSettings = () => {
+  for (const res of subscribers) res.write('event: settings\ndata: changed\n\n')
+}
+let stream = null
 
 const alarms = createAlarmStore({ file: process.env.ALARMS_FILE || '/data/alarms.json', log })
 const todosWithAlarms = () => source.todos.map((t) => ({ ...t, alarm: alarms.get(t.id) }))
@@ -220,6 +227,19 @@ app.post('/api/todos/:id/toggle', async (req, res) => {
   }
 })
 
+app.get('/api/settings', (req, res) => res.json(settings.get()))
+
+// Body: { muted?, volume? (0-1) }. The volume goes to the panel, which reports back.
+app.post('/api/settings', (req, res) => {
+  const { muted, volume } = req.body ?? {}
+  if (muted !== undefined && typeof muted !== 'boolean') return res.status(400).json({ error: 'muted must be true/false' })
+  if (volume !== undefined && !(volume >= 0 && volume <= 1)) return res.status(400).json({ error: 'volume must be 0-1' })
+  const changes = { ...(muted !== undefined && { muted }), ...(volume !== undefined && { volume }) }
+  if (settings.update(changes)) broadcastSettings()
+  if (volume !== undefined) stream?.setVolume(volume)
+  res.json(settings.get())
+})
+
 const MUSIC_COMMANDS = { play_pause: 'media_play_pause', next: 'media_next_track', previous: 'media_previous_track' }
 
 app.get('/api/music', (req, res) => res.json(musicState()))
@@ -302,7 +322,16 @@ const server = app.listen(config.port, async () => {
       channel: config.channel,
       log,
     })
-    attachTileStream({ server, renderer, isAuthorized, quality: config.quality, log })
+    stream = attachTileStream({
+      server,
+      renderer,
+      isAuthorized,
+      quality: config.quality,
+      log,
+      getVolume: () => settings.get().volume,
+      // The panel's own volume wins: it may have been changed from Music Assistant.
+      onPanelVolume: (volume) => settings.update({ volume }) && broadcastSettings(),
+    })
     startAlarmScheduler({ store: alarms, getTodos: () => source.todos, play: renderer.playSound, log })
     log('renderer ready')
   } catch (err) {

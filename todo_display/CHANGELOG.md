@@ -3,6 +3,19 @@
 Bump `version` in `config.yaml` with every change: Home Assistant only rebuilds
 the add-on when the version changes.
 
+## 0.9.0
+
+- One volume for everything: the heart menu's slider (and the one in the music
+  popover) is the panel's master volume, applied at the amp, so it scales tap
+  clicks, alarm chimes and music together. It follows the panel when Music
+  Assistant or Spotify changes the volume.
+- Louder clicks and chimes: full scale with a soft-clipped boost.
+- Tap-sound mute and the volume are kept in `/data/settings.json`, so they
+  survive add-on restarts (they used to reset).
+- Protocol: panels advertising `master` get `v <0-100>` to set their volume and
+  report changes with `v <0-100>`; sounds go to them at 100. Older firmware
+  keeps getting the volume with each sound.
+
 ## 0.8.0
 
 - Music: a note button left of the heart opens *Now playing* for the panel's

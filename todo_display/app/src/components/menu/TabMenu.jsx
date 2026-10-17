@@ -3,7 +3,7 @@ import { ListIcon, MutedIcon, PlusIcon, SoundIcon } from '../ui/icons.jsx'
 import { TABS } from './tabs.js'
 
 export function TabMenu({ value, onChange, onClose, sound }) {
-  const { muted, toggleMuted, volume, setVolume, preview } = sound
+  const { muted, toggleMuted, volume, setVolume, commitVolume } = sound
   return (
     <>
       {/* Flat tint, no blur or shadow: the panel is RGB565. A tap outside closes the menu. */}
@@ -53,18 +53,19 @@ export function TabMenu({ value, onChange, onClose, sound }) {
                 {muted ? 'Off' : 'On'}
               </span>
             </button>
-            {/* Lines up under the label. Clicks once on release so the level can be heard. */}
-            <label className="flex h-10 items-center pr-3 pl-[52px]">
-              <span className="sr-only">Tap sound volume</span>
+            {/* The panel's volume for everything: clicks, alarms and music. Clicks once
+                on release so the level can be heard. */}
+            <label className="flex h-10 items-center gap-3 pr-3 pl-3">
+              <span className="w-7 text-right text-[11px] font-medium text-plum-soft tabular-nums">{volume}</span>
+              <span className="sr-only">Volume</span>
               <input
                 type="range"
                 min={0}
                 max={100}
                 step={5}
                 value={volume}
-                disabled={muted}
                 onChange={(e) => setVolume(Number(e.target.value))}
-                onPointerUp={(e) => preview(Number(e.currentTarget.value))}
+                onPointerUp={(e) => commitVolume(Number(e.currentTarget.value))}
                 className="volume-slider w-full"
                 style={{ '--fill': `${volume}%` }}
               />

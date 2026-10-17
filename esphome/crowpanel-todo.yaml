@@ -31,6 +31,7 @@ esphome:
       - lambda: |-
           id(fx_spk).set_audio_stream_info(chimes::stream_info());
           id(fx_spk).start();
+          id(panel).set_volume_getter([]() { return id(music).volume; });
 
 esp32:
   board: esp32-s3-devkitc-1
@@ -83,8 +84,12 @@ display:
     id: panel
     url: ${stream_url}
     # Pins, timings and 15MHz PCLK default to the CrowPanel 7.0"; override here if needed.
-    # The page asks for a click when a tap hits a button (volume and mute in the heart
-    # menu); the add-on asks for a chime when a todo's alarm is due. See chimes.h.
+    # The heart menu's volume is the panel's master volume: the music player's, which
+    # the mixer applies to the amp, so it scales clicks, chimes and music alike.
+    on_volume:
+      - lambda: id(music).make_call().set_volume(volume).perform();
+    # The page asks for a click when a tap hits a button (mute in the heart menu); the
+    # add-on asks for a chime when a todo's alarm is due. See chimes.h.
     on_sound:
       - lambda: |-
           if (!chimes::play(id(fx_spk), sound, volume))
@@ -190,6 +195,9 @@ media_player:
     id: music
     name: Music
     volume_initial: 40%
+    # Report every change (page, Music Assistant, Spotify) so both sliders follow.
+    on_volume:
+      - lambda: id(panel).send_volume(id(music).volume);
     media_pipeline:
       speaker: music_spk
       sources:

@@ -99,12 +99,14 @@ void TileStreamDisplay::loop() {
     // Copy ops write the framebuffer directly, which is only cache-coherent with
     // the panel when bounce buffers feed it; otherwise ask for plain tiles.
     // Feature words after the number are ignored by older servers.
-    const bool sound = this->sound_callbacks_.size() > 0;
-    if (this->bounce_lines_ > 0) {
-      this->send_text_(sound ? "hello 2 sound volume" : "hello 2");
-    } else {
-      this->send_text_(sound ? "hello 1 sound volume" : "hello");
-    }
+    std::string hello = this->bounce_lines_ > 0 ? "hello 2" : "hello 1";
+    if (this->sound_callbacks_.size() > 0)
+      hello += " sound volume";
+    if (this->volume_callbacks_.size() > 0)
+      hello += " master";
+    this->send_text_(hello == "hello 1" ? "hello" : hello.c_str());
+    if (this->volume_callbacks_.size() > 0 && this->volume_getter_)
+      this->send_volume(this->volume_getter_());
   }
 
   // Spin the main loop at full speed while someone is interacting, so updates are
@@ -123,8 +125,13 @@ void TileStreamDisplay::loop() {
   }
 
   Sound sound;
-  while (this->sounds_ != nullptr && xQueueReceive(this->sounds_, &sound, 0) == pdTRUE)
-    this->sound_callbacks_.call(std::string(sound.name), sound.volume);
+  while (this->sounds_ != nullptr && xQueueReceive(this->sounds_, &sound, 0) == pdTRUE) {
+    if (sound.volume < 0) {
+      this->volume_callbacks_.call(std::clamp(atoi(sound.name), 0, 100) / 100.0f);
+    } else {
+      this->sound_callbacks_.call(std::string(sound.name), sound.volume);
+    }
+  }
 }
 
 void TileStreamDisplay::start_stream_() {
@@ -241,12 +248,28 @@ void TileStreamDisplay::on_ws_data_(const esp_websocket_event_data_t *event) {
     heap_caps_free(update.data);
 }
 
-// "s <name> [volume 0-100]": play a sound. Text messages are tiny, so they always
-// arrive whole. Without a volume (older servers) the sound plays at 70%.
+void TileStreamDisplay::send_volume(float volume) {
+  char msg[16];
+  snprintf(msg, sizeof(msg), "v %d", (int) lroundf(std::clamp(volume, 0.0f, 1.0f) * 100));
+  this->send_text_(msg);
+}
+
+// "s <name> [volume 0-100]": play a sound; "v <0-100>": set the master volume. Text
+// messages are tiny, so they always arrive whole. Without a volume (older servers)
+// a sound plays at 70%.
 void TileStreamDisplay::on_ws_text_(const esp_websocket_event_data_t *event) {
   const int len = event->data_len;
-  if (event->payload_offset != 0 || len != event->payload_len || len < 3 || event->data_ptr[0] != 's' ||
-      event->data_ptr[1] != ' ')
+  if (event->payload_offset != 0 || len != event->payload_len || len < 3 || event->data_ptr[1] != ' ')
+    return;
+  if (event->data_ptr[0] == 'v') {
+    Sound change{};
+    memcpy(change.name, event->data_ptr + 2, std::min<size_t>(len - 2, sizeof(change.name) - 1));
+    change.volume = -1;
+    if (this->sounds_ != nullptr)
+      xQueueSend(this->sounds_, &change, 0);
+    return;
+  }
+  if (event->data_ptr[0] != 's')
     return;
   char text[32]{};
   memcpy(text, event->data_ptr + 2, std::min<size_t>(len - 2, sizeof(text) - 1));

@@ -65,11 +65,11 @@ export async function createRenderer({ url, executablePath, channel, log }) {
   }
 
   await page.exposeFunction('__frameDirty', () => void capture())
-  // The page asks the panel to play a sound (e.g. a click when a tap hits a button)
-  // at a volume of 0-100.
+  // The page asks the panel to play a sound (e.g. a click when a tap hits a button),
+  // optionally at a volume of 0-100 (otherwise the panel volume applies).
   function playSound(name, volume) {
     if (typeof name !== 'string' || !/^[a-z]{1,15}$/.test(name)) return
-    const vol = Math.min(100, Math.max(0, Math.round(Number(volume ?? 70)) || 0))
+    const vol = volume == null ? null : Math.min(100, Math.max(0, Math.round(Number(volume)) || 0))
     for (const fn of soundListeners) fn(name, vol)
   }
   await page.exposeFunction('__sound', playSound)

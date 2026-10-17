@@ -70,14 +70,21 @@ static int synth(const std::string &name, float *buf) {
   return 0;
 }
 
-// 8ms 2.5kHz tick with a fast decay (1.5ms). Squared volume so the slider feels
-// even; 70% is about the original loudness.
+// Louder than plain full scale: drive into a tanh soft clip, which raises the
+// average level of short sounds without hard-clipping them.
+static constexpr float DRIVE = 2.0f;
+static int16_t shape(float x, float volume) {
+  return 32000 * volume * volume * tanhf(DRIVE * x) / tanhf(DRIVE);
+}
+
+// 8ms 2.5kHz tick with a fast decay (1.5ms). Squared volume so a per-sound volume
+// (from servers without a master volume) feels even. With a master volume the
+// server sends 100 and the amp's volume does the scaling.
 static void play_click(esphome::speaker::Speaker *spk, float volume) {
   static constexpr int LEN = RATE / 125;
   static int16_t pcm[LEN];
-  const float peak = 20000 * volume * volume;
   for (int i = 0; i < LEN; i++)
-    pcm[i] = peak * expf(-float(i) / (RATE * 0.0015f)) * sinf(2 * float(M_PI) * 2500 * i / RATE);
+    pcm[i] = shape(expf(-float(i) / (RATE * 0.0015f)) * sinf(2 * float(M_PI) * 2500 * i / RATE), volume);
   spk->play(reinterpret_cast<const uint8_t *>(pcm), sizeof(pcm));
 }
 
@@ -102,9 +109,8 @@ static bool play(esphome::speaker::Speaker *spk, const std::string &name, float 
   float max = 1e-6f;
   for (int i = 0; i < len; i++)
     max = std::max(max, fabsf(mix[i]));
-  const float scale = 26000 * volume * volume / max;
   for (int i = 0; i < len; i++)
-    pcm[i] = mix[i] * scale;
+    pcm[i] = shape(mix[i] / max, volume);
   const size_t bytes = len * sizeof(int16_t);
   const size_t written = spk->play(reinterpret_cast<const uint8_t *>(pcm), bytes);
   if (written < bytes)

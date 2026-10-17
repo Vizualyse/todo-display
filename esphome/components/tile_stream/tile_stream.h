@@ -50,6 +50,13 @@ class TileStreamDisplay : public display::Display {
   void add_on_sound_callback(std::function<void(std::string, float)> &&callback) {
     this->sound_callbacks_.add(std::move(callback));
   }
+  /// The panel's master volume (0..1), set from the page. With a callback the panel
+  /// advertises "master" and must report its volume through send_volume().
+  void add_on_volume_callback(std::function<void(float)> &&callback) { this->volume_callbacks_.add(std::move(callback)); }
+  /// Where the current volume is read when the stream (re)connects.
+  void set_volume_getter(std::function<float()> &&getter) { this->volume_getter_ = std::move(getter); }
+  /// Tell the server the volume changed (from the page, Music Assistant, ...).
+  void send_volume(float volume);
 
   void set_url(const std::string &url) { this->url_ = url; }
   void set_dimensions(int width, int height) {
@@ -84,7 +91,7 @@ class TileStreamDisplay : public display::Display {
   };
   struct Sound {
     char name[16];
-    float volume;
+    float volume;  // < 0: not a sound but a master volume change
   };
 
   int get_width_internal() override { return this->width_; }
@@ -119,6 +126,8 @@ class TileStreamDisplay : public display::Display {
   QueueHandle_t updates_{nullptr};
   QueueHandle_t sounds_{nullptr};
   CallbackManager<void(std::string, float)> sound_callbacks_;
+  CallbackManager<void(float)> volume_callbacks_;
+  std::function<float()> volume_getter_;
   std::atomic<bool> ws_connected_{false};
   std::atomic<bool> ws_just_connected_{false};
   uint8_t *rx_buf_{nullptr};
@@ -136,6 +145,13 @@ class SoundTrigger : public Trigger<std::string, float> {
   explicit SoundTrigger(TileStreamDisplay *parent) {
     parent->add_on_sound_callback(
         [this](const std::string &sound, float volume) { this->trigger(sound, volume); });
+  }
+};
+
+class VolumeTrigger : public Trigger<float> {
+ public:
+  explicit VolumeTrigger(TileStreamDisplay *parent) {
+    parent->add_on_volume_callback([this](float volume) { this->trigger(volume); });
   }
 };
 

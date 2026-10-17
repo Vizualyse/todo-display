@@ -15,12 +15,16 @@ import { HEIGHT, WIDTH } from './renderer.js'
  *
  * Server -> panel, text messages (only to panels that advertised "sound"):
  *   "s <name> [volume]"  play a sound, e.g. "s click 70" when a tap hits a
- *                 button; the volume (0-100) only goes to panels with "volume"
+ *                 button; the volume (0-100) only goes to panels with "volume".
+ *                 Panels with "master" get 100: their own volume scales it.
+ *   "v <0-100>"   set the panel's master volume (panels with "master")
  *
  * Panel -> server, text messages:
  *   "hello [n] [feature...]"  (re)connected, send a full frame; n >= 2 means it
  *                 supports copy ops; feature "sound" means it can play sounds,
- *                 "volume" that it takes a volume with them
+ *                 "volume" that it takes a volume with them, "master" that it
+ *                 has a master volume (and reports it with "v")
+ *   "v <0-100>"   the panel's master volume changed (also sent after hello)
  *   "ack <ver>"   finished drawing that update, ready for the next one
  *   "d <x> <y>"   finger down at native panel coordinates
  *   "m <x> <y>"   finger moved (drag)
@@ -203,7 +207,7 @@ async function encodeUpdate(frame, rects, full, quality, copy) {
   return Buffer.concat(parts)
 }
 
-export function attachTileStream({ server, renderer, isAuthorized, quality, log }) {
+export function attachTileStream({ server, renderer, isAuthorized, quality, log, getVolume, onPanelVolume }) {
   const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false })
   const clients = new Set()
 
@@ -230,11 +234,15 @@ export function attachTileStream({ server, renderer, isAuthorized, quality, log 
         client.canCopy = Number(a) >= 2
         client.canSound = [b, ...rest].includes('sound')
         client.canVolume = [b, ...rest].includes('volume')
+        client.canMaster = [b, ...rest].includes('master')
         client.sent = null
         settle(client)
       } else if (cmd === 'ack') {
         if (client.sentAt) log(`  v${a} acked after ${(performance.now() - client.sentAt).toFixed(0)}ms (${client.name})`)
         settle(client)
+      } else if (cmd === 'v' && client.canMaster) {
+        const volume = Number(a)
+        if (volume >= 0 && volume <= 100) onPanelVolume?.(volume / 100)
       } else if (cmd === 'u') {
         client.touchAt = performance.now()
         renderer.pointer('up')
@@ -302,7 +310,18 @@ export function attachTileStream({ server, renderer, isAuthorized, quality, log 
   renderer.onSound((name, volume) => {
     for (const client of clients) {
       if (!client.canSound || client.ws.readyState !== client.ws.OPEN) continue
-      client.ws.send(client.canVolume ? `s ${name} ${volume}` : `s ${name}`)
+      // Without a master volume the panel scales each sound by the one it's sent.
+      const vol = client.canMaster ? 100 : (volume ?? Math.round(getVolume() * 100))
+      client.ws.send(client.canVolume ? `s ${name} ${vol}` : `s ${name}`)
     }
   })
+
+  return {
+    /** Set every capable panel's master volume (0-1). */
+    setVolume(volume) {
+      for (const client of clients) {
+        if (client.canMaster && client.ws.readyState === client.ws.OPEN) client.ws.send(`v ${Math.round(volume * 100)}`)
+      }
+    },
+  }
 }
