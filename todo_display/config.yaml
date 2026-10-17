@@ -1,5 +1,5 @@
 name: ToDo Display
-version: "0.2.0"
+version: "0.3.0"
 slug: todo_display
 description: Todo list rendered server-side and streamed as tiles to a CrowPanel display
 url: https://github.com/Vizualyse/todo-display
