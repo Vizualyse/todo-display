@@ -3,11 +3,11 @@
 
 substitutions:
   name: crowpanel-todo
-  # Hard-coded display secret: must match `display_secret` in the add-on options.
-  display_key: "change-me"
+  # Must match `display_secret` in the add-on options; kept in secrets.yaml (gitignored).
+  display_key: !secret display_key
   # Lowest latency: talk to the add-on directly on the LAN (plain ws://, port 8099).
   # Use Home Assistant's IP address; .local names may not resolve from the stream client.
-  stream_url: "ws://192.168.1.10:8099/ws?key=${display_key}"
+  stream_url: "ws://192.168.8.173:8099/ws?key=${display_key}"
   # Through the public hostname instead (TLS, adds a little latency, works off-LAN):
   # stream_url: "wss://todo.vizualyse.uk/ws?key=${display_key}"
 
