@@ -1,5 +1,5 @@
 name: ToDo Display
-version: "0.7.0"
+version: "0.8.0"
 slug: todo_display
 description: Todo list rendered server-side and streamed as tiles to a CrowPanel display
 url: https://github.com/Vizualyse/todo-display
@@ -28,6 +28,8 @@ options:
   orientation: portrait
   rotation: 90
   jpeg_quality: 80
+  # Empty finds the panel's Music Assistant player by name ("CrowPanel ...").
+  music_player: ""
 schema:
   display_secret: password
   todo_entities:
@@ -35,3 +37,4 @@ schema:
   orientation: list(portrait|landscape)
   rotation: list(90|270)
   jpeg_quality: int(40,95)
+  music_player: "match(^(media_player\\.[a-z0-9_]+)?$)"

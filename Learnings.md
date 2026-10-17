@@ -104,6 +104,15 @@ CrowPanel 7.0" unless marked otherwise.
 - **Chimes are synthesised on the panel** (`esphome/chimes.h`), 16kHz mono, and
   written to the speaker in one `play()`. That needs `buffer_duration` longer than
   the longest chime (2s for 1.75s); a short buffer silently truncates it.
+- **Music is Sendspin, mainline in ESPHome since 2026.3** (`sendspin` hub, a
+  `sendspin` media source in a `speaker_source` media player). Music Assistant
+  finds the panel over mDNS and connects by itself, even before the device is in
+  HA. Its HA media player (with metadata/art) only exists once the Music
+  Assistant *integration* is set up in HA.
+- **One amp, three sounds: `mixer` speaker** with an effects source (clicks,
+  chimes, `timeout: never`) and a music source, all at 48kHz so no `resampler` is
+  needed; the chimes are synthesised at 48kHz to match. Don't name the mixer
+  `mixer`: an ID can't equal an integration name. Flash use went 54% -> 69%.
 - **Backlight (GPIO2) is off unless a config drives it.** A test firmware without the
   `ledc` backlight light looks blank even though the framebuffer is drawn.
 - **RGB565 bands gradients.** Design with flat colours. The old dark radial
@@ -140,8 +149,9 @@ CrowPanel 7.0" unless marked otherwise.
   list-y = screen-y. Set `scrollTop` to whole pixels so copies are exact.
 - **Display mode disables transitions/animations.** One screenshot after a
   change is then final.
-- **`MutationObserver` doesn't fire on scroll.** Listen for `scroll` (capture
-  phase) separately.
+- **`MutationObserver` doesn't fire on scroll** or when an `<img>` finishes
+  loading. Listen for `scroll` and `load` (capture phase) separately, or album art
+  shows up a frame late or never.
 - **No native `<select>` on the panel.** Its popup is drawn outside the page and
   never shows up in the screenshot. Draw dropdowns in the page.
 - **Landscape has no spare height in the add form.** Every extra row pushes the

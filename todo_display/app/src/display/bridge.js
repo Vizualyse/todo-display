@@ -20,8 +20,10 @@ export function installDisplayBridge() {
   new MutationObserver(dirty).observe(document.body, {
     subtree: true, childList: true, attributes: true, characterData: true,
   })
-  // Scrolling repaints without touching the DOM, so watch it separately.
+  // Scrolling repaints without touching the DOM, so watch it separately. So does an
+  // image finishing loading (album art) after the frame for its <img> was taken.
   addEventListener('scroll', dirty, true)
+  addEventListener('load', dirty, true)
 
   // Read by the renderer with every frame so the panel can shift pixels it already
   // has instead of re-decoding the whole list. `dir` maps +1px of scrollTop to the

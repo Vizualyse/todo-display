@@ -8,10 +8,12 @@ import { ListFilter } from './components/list/ListFilter.jsx'
 import { Summary } from './components/list/Summary.jsx'
 import { TodoList } from './components/list/TodoList.jsx'
 import { MenuButton } from './components/menu/MenuButton.jsx'
+import { MusicButton, MusicMenu } from './components/menu/MusicMenu.jsx'
 import { TabMenu } from './components/menu/TabMenu.jsx'
 import { tabTitle } from './components/menu/tabs.js'
 import { useListSelection } from './hooks/useListSelection.js'
 import { useMinuteClock } from './hooks/useMinuteClock.js'
+import { useMusic } from './hooks/useMusic.js'
 import { useOrientation } from './hooks/useOrientation.js'
 import { useTapSound } from './hooks/useTapSound.js'
 import { useTodos } from './hooks/useTodos.js'
@@ -27,8 +29,11 @@ export default function App() {
   const [filter, setFilter] = useState('open')
   const [tab, setTab] = useState('list') // 'list' | 'add' | 'edit'
   const [editingId, setEditingId] = useState(null)
-  const [menuOpen, setMenuOpen] = useState(false)
+  const [popover, setPopover] = useState(null) // null | 'menu' | 'music'
+  const menuOpen = popover === 'menu'
+  const setMenuOpen = (open) => setPopover(open ? 'menu' : null)
   const sound = useTapSound()
+  const music = useMusic()
 
   // Back to the list if the todo being edited disappears (e.g. removed in HA).
   const editing = tab === 'edit' ? todos.find((t) => t.id === editingId) : null
@@ -46,7 +51,7 @@ export default function App() {
   }
   const visible = todos.filter(FILTERS.find((f) => f.id === filter).test).sort(byUpcoming)
   const compact = orientation === 'landscape'
-  const header = <Header now={now} clearMenu={!compact} />
+  const header = <Header now={now} clearMenu={!compact} wide={music.available} />
   const summary = <Summary todos={todos} />
   const filters = (
     <div className="flex gap-2">
@@ -64,6 +69,11 @@ export default function App() {
   )
   const menu = (
     <>
+      {/* The music button only appears once Home Assistant has the panel's player. */}
+      {music.available && (
+        <MusicButton open={popover === 'music'} playing={music.playing} onClick={() => setPopover(popover === 'music' ? null : 'music')} />
+      )}
+      {popover === 'music' && music.available && <MusicMenu music={music} onClose={() => setPopover(null)} />}
       <MenuButton open={menuOpen} onClick={() => setMenuOpen(!menuOpen)} />
       {menuOpen && (
         <TabMenu
@@ -90,7 +100,7 @@ export default function App() {
         </aside>
         <main className="flex min-h-0 flex-col gap-4">
           {/* Leaves room for the menu button in the top right corner. */}
-          <h2 className="flex h-11 shrink-0 items-center pr-14 font-serif text-[26px] leading-none font-medium italic">
+          <h2 className={`flex h-11 shrink-0 items-center ${music.available ? 'pr-28' : 'pr-14'} font-serif text-[26px] leading-none font-medium italic`}>
             {tabTitle(tab)}
           </h2>
           {tab === 'list' ? list : form}

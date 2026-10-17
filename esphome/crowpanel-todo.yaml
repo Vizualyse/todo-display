@@ -26,9 +26,11 @@ esphome:
     priority: -100
     then:
       - script.execute: screen_idle
-      # Keep the speaker running (silent) so a click plays at once instead of being
-      # lost while the I2S driver starts.
-      - lambda: id(spk).start();
+      # Keep the sound-effects speaker running (silent) so a click plays at once
+      # instead of being lost while the I2S driver starts.
+      - lambda: |-
+          id(fx_spk).set_audio_stream_info(chimes::stream_info());
+          id(fx_spk).start();
 
 esp32:
   board: esp32-s3-devkitc-1
@@ -85,7 +87,7 @@ display:
     # menu); the add-on asks for a chime when a todo's alarm is due. See chimes.h.
     on_sound:
       - lambda: |-
-          if (!chimes::play(id(spk), sound, volume))
+          if (!chimes::play(id(fx_spk), sound, volume))
             ESP_LOGW("sound", "Unknown sound '%s'", sound.c_str());
       # Anything but a click is an alarm: light the screen so the todo can be seen.
       - if:
@@ -145,20 +147,54 @@ script:
       - delay: ${screen_timeout}
       - light.turn_off: { id: backlight, transition_length: 1s }
 
-# NS4168 I2S amp on the speaker socket.
+# NS4168 I2S amp on the speaker socket. A mixer shares it between sound effects
+# (clicks, alarm chimes) and music, both at 48kHz so nothing needs resampling.
 i2s_audio:
   i2s_lrclk_pin: GPIO18
   i2s_bclk_pin: GPIO42
 
 speaker:
   - platform: i2s_audio
-    id: spk
+    id: amp
     dac_type: external
     i2s_dout_pin: GPIO17
     channel: mono
+    sample_rate: 48000
+    bits_per_sample: 16bit
     timeout: never
-    # Room for a whole alarm chime (up to 1.75s), queued in one go.
-    buffer_duration: 2s
+  - platform: mixer
+    id: amp_mixer
+    output_speaker: amp
+    task_stack_in_psram: true
+    source_speakers:
+      - id: fx_spk
+        timeout: never
+        # Room for a whole alarm chime (up to 1.75s), queued in one go.
+        buffer_duration: 2s
+      - id: music_spk
+
+# Music from Music Assistant over Sendspin. HA hands the device to Music Assistant,
+# which lists it as a player (and as a Spotify Connect target if enabled there).
+sendspin:
+  task_stack_in_psram: true
+
+media_source:
+  - platform: sendspin
+    id: sendspin_source
+    task_stack_in_psram: true
+    # The amp is mono; a lower rate isn't worth it (Opus needs 48kHz anyway).
+    sample_rate: 48000
+
+media_player:
+  - platform: speaker_source
+    id: music
+    name: Music
+    volume_initial: 40%
+    media_pipeline:
+      speaker: music_spk
+      sources:
+        - sendspin_source
+      num_channels: 1
 
 output:
   - platform: ledc

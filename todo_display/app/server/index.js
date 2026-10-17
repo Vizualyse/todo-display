@@ -36,6 +36,8 @@ function loadConfig() {
   return {
     ha,
     todoEntities: opts.todo_entities ?? (env.TODO_ENTITIES ? env.TODO_ENTITIES.split(',').map((s) => s.trim()) : []),
+    // Empty finds the panel's Music Assistant player by name.
+    musicPlayer: opts.music_player || env.MUSIC_PLAYER || '',
     port: Number(env.PORT || 8099),
     secret: String(opts.display_secret || env.DISPLAY_SECRET || 'dev-secret'),
     orientation: opts.orientation || env.ORIENTATION || 'portrait',
@@ -57,11 +59,43 @@ const subscribers = new Set()
 const broadcast = () => {
   for (const res of subscribers) res.write('data: changed\n\n')
 }
+// Only when something the popover shows changed, not on every position tick.
+let lastMusic = ''
+const broadcastMusic = () => {
+  const now = JSON.stringify(musicState())
+  if (now === lastMusic) return
+  lastMusic = now
+  for (const res of subscribers) res.write('event: music\ndata: changed\n\n')
+}
 
 const source = config.ha
-  ? createHomeAssistantSource({ ...config.ha, entities: config.todoEntities, log, onChange: broadcast })
-  : createMockSource({ onChange: broadcast })
+  ? createHomeAssistantSource({
+      ...config.ha,
+      entities: config.todoEntities,
+      musicPlayer: config.musicPlayer,
+      log,
+      onChange: broadcast,
+      onMusic: () => broadcastMusic(),
+    })
+  : createMockSource({ onChange: broadcast, onMusic: () => broadcastMusic() })
 if (!config.ha) log('No Home Assistant connection configured, using mock todos')
+
+/** What the music popover shows; `art` changes with the picture, so it doubles as a cache key. */
+function musicState() {
+  const m = source.music
+  if (!m) return { available: false }
+  const a = m.attributes
+  const picture = a.entity_picture ?? ''
+  return {
+    available: m.state !== 'unavailable',
+    playing: m.state === 'playing',
+    title: a.media_title ?? null,
+    artist: a.media_artist ?? null,
+    album: a.media_album_name ?? null,
+    volume: typeof a.volume_level === 'number' ? a.volume_level : null,
+    art: picture ? crypto.createHash('sha1').update(picture).digest('hex').slice(0, 12) : null,
+  }
+}
 
 const alarms = createAlarmStore({ file: process.env.ALARMS_FILE || '/data/alarms.json', log })
 const todosWithAlarms = () => source.todos.map((t) => ({ ...t, alarm: alarms.get(t.id) }))
@@ -182,6 +216,47 @@ app.post('/api/todos/:id/toggle', async (req, res) => {
     log(`toggle failed: ${err.message}`)
     // Tell pages to reload so the optimistic tick is rolled back.
     broadcast()
+    res.status(502).json({ error: err.message })
+  }
+})
+
+const MUSIC_COMMANDS = { play_pause: 'media_play_pause', next: 'media_next_track', previous: 'media_previous_track' }
+
+app.get('/api/music', (req, res) => res.json(musicState()))
+
+app.get('/api/music/art', async (req, res) => {
+  try {
+    const art = await source.musicArt()
+    if (!art) return res.status(404).end()
+    // The URL carries the art key, so a new picture is a new URL.
+    res.set('Cache-Control', 'max-age=86400').type(art.type).send(art.body)
+  } catch (err) {
+    log(`music art failed: ${err.message}`)
+    res.status(502).end()
+  }
+})
+
+app.post('/api/music/volume', async (req, res) => {
+  const volume = Number(req.body?.volume)
+  if (!(volume >= 0 && volume <= 1)) return res.status(400).json({ error: 'volume must be 0-1' })
+  try {
+    await source.musicCommand('volume_set', { volume_level: volume })
+    res.json({ ok: true })
+  } catch (err) {
+    log(`music volume failed: ${err.message}`)
+    res.status(502).json({ error: err.message })
+  }
+})
+
+app.post('/api/music/:command', async (req, res) => {
+  const service = MUSIC_COMMANDS[req.params.command]
+  if (!service) return res.status(404).json({ error: 'unknown command' })
+  try {
+    await source.musicCommand(service)
+    res.json({ ok: true })
+  } catch (err) {
+    log(`music ${req.params.command} failed: ${err.message}`)
+    broadcastMusic()
     res.status(502).json({ error: err.message })
   }
 })

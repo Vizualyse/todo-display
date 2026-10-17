@@ -1,7 +1,7 @@
 #pragma once
 
 // Sounds the todo page asks for (tile_stream on_sound): a tap click and the alarm
-// chimes. Synthesised at 16kHz 16-bit mono, the speaker's default format. The chime
+// chimes. Synthesised at 48kHz 16-bit mono, the mixer's rate (music is 48kHz). The chime
 // names match CHIMES in the add-on (server/alarms.js, src/lib/alarms.js).
 
 #include "esphome/components/speaker/speaker.h"
@@ -15,7 +15,7 @@
 
 namespace chimes {
 
-static constexpr int RATE = 16000;
+static constexpr int RATE = 48000;
 static constexpr int MAX_SAMPLES = RATE * 2;  // fits the speaker's 2s buffer
 
 struct Partial {
@@ -70,15 +70,19 @@ static int synth(const std::string &name, float *buf) {
   return 0;
 }
 
-// 8ms 2.5kHz tick with a fast decay. Squared volume so the slider feels even;
-// 70% is about the original loudness.
+// 8ms 2.5kHz tick with a fast decay (1.5ms). Squared volume so the slider feels
+// even; 70% is about the original loudness.
 static void play_click(esphome::speaker::Speaker *spk, float volume) {
-  static int16_t pcm[128];
+  static constexpr int LEN = RATE / 125;
+  static int16_t pcm[LEN];
   const float peak = 20000 * volume * volume;
-  for (int i = 0; i < 128; i++)
-    pcm[i] = peak * expf(-i / 24.0f) * sinf(2 * float(M_PI) * 2500 * i / RATE);
+  for (int i = 0; i < LEN; i++)
+    pcm[i] = peak * expf(-float(i) / (RATE * 0.0015f)) * sinf(2 * float(M_PI) * 2500 * i / RATE);
   spk->play(reinterpret_cast<const uint8_t *>(pcm), sizeof(pcm));
 }
+
+/// The format every sound here is written in; set on the speaker before it starts.
+static esphome::audio::AudioStreamInfo stream_info() { return esphome::audio::AudioStreamInfo(16, 1, RATE); }
 
 // Returns false for an unknown sound.
 static bool play(esphome::speaker::Speaker *spk, const std::string &name, float volume) {

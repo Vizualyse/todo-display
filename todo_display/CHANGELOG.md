@@ -3,6 +3,17 @@
 Bump `version` in `config.yaml` with every change: Home Assistant only rebuilds
 the add-on when the version changes.
 
+## 0.8.0
+
+- Music: a note button left of the heart opens *Now playing* for the panel's
+  Music Assistant player: album art, title, artist, previous / play-pause /
+  next and a volume slider. Spotify plays on it through Music Assistant's
+  Spotify Connect. The button only appears once Home Assistant has the player
+  (the Music Assistant integration set up); found by name ("CrowPanel"), or set
+  the new `music_player` option.
+- The panel firmware plays music itself over Sendspin, mixed with tap clicks and
+  alarm chimes (ESPHome `sendspin` + `speaker_source` + `mixer`).
+
 ## 0.7.0
 
 - Due times: once a date is picked, a *Time* chip opens an hour/minute grid. Only
