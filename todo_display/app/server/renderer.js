@@ -23,6 +23,7 @@ export async function createRenderer({ url, executablePath, channel, log }) {
   let again = false
   let queue = Promise.resolve()
   const listeners = new Set()
+  const soundListeners = new Set()
 
   /** Run fn after everything queued before it; input and captures never interleave. */
   function exclusive(fn) {
@@ -64,6 +65,11 @@ export async function createRenderer({ url, executablePath, channel, log }) {
   }
 
   await page.exposeFunction('__frameDirty', () => void capture())
+  // The page asks the panel to play a sound (e.g. a click when a tap hits a button).
+  await page.exposeFunction('__sound', (name) => {
+    if (typeof name !== 'string' || !/^[a-z]{1,15}$/.test(name)) return
+    for (const fn of soundListeners) fn(name)
+  })
   page.on('crash', () => {
     log('page crashed, reloading')
     page.reload().catch(() => {})
@@ -80,6 +86,10 @@ export async function createRenderer({ url, executablePath, channel, log }) {
     onFrame(fn) {
       listeners.add(fn)
       return () => listeners.delete(fn)
+    },
+    onSound(fn) {
+      soundListeners.add(fn)
+      return () => soundListeners.delete(fn)
     },
     /**
      * Replay panel touches as real mouse input, strictly in arrival order. The

@@ -21,6 +21,8 @@ export const BackspaceIcon = () => <Icon className="size-5" d="M21 5H9l-6 7 6 7h
 export const PrevIcon = () => <Icon d="M15 5l-7 7 7 7" />
 export const NextIcon = () => <Icon d="M9 5l7 7-7 7" />
 export const CloseIcon = () => <Icon d="M6 6l12 12M18 6L6 18" />
+export const SoundIcon = () => <Icon d="M4 9.5v5h3.5L12 18V6L7.5 9.5zM15.5 9.5a3.5 3.5 0 0 1 0 5M18 7a7 7 0 0 1 0 10" />
+export const MutedIcon = () => <Icon d="M4 9.5v5h3.5L12 18V6L7.5 9.5zM16 10l4 4M20 10l-4 4" />
 export const FilterIcon = () => <Icon className="size-5" d="M4 5h16l-6 7.5V18l-4 2v-7.5z" />
 
 export function CheckIcon() {

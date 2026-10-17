@@ -24,6 +24,7 @@ namespace tile_stream {
 
 static const char *const TAG = "tile_stream";
 static constexpr uint8_t WS_OPCODE_CONTINUATION = 0x0;
+static constexpr uint8_t WS_OPCODE_TEXT = 0x1;
 static constexpr uint8_t WS_OPCODE_BINARY = 0x2;
 static constexpr size_t HEADER_LEN = 8;
 static constexpr size_t TILE_HEADER_LEN = 12;
@@ -86,6 +87,7 @@ void TileStreamDisplay::setup() {
 
   this->jpeg_ = std::make_unique<JPEGDEC>();
   this->updates_ = xQueueCreate(4, sizeof(Update));
+  this->sounds_ = xQueueCreate(4, sizeof(Sound));
 }
 
 void TileStreamDisplay::loop() {
@@ -96,7 +98,13 @@ void TileStreamDisplay::loop() {
     ESP_LOGI(TAG, "Stream connected");
     // Copy ops write the framebuffer directly, which is only cache-coherent with
     // the panel when bounce buffers feed it; otherwise ask for plain tiles.
-    this->send_text_(this->bounce_lines_ > 0 ? "hello 2" : "hello");
+    // Feature words after the number are ignored by older servers.
+    const bool sound = this->sound_callbacks_.size() > 0;
+    if (this->bounce_lines_ > 0) {
+      this->send_text_(sound ? "hello 2 sound" : "hello 2");
+    } else {
+      this->send_text_(sound ? "hello 1 sound" : "hello");
+    }
   }
 
   // Spin the main loop at full speed while someone is interacting, so updates are
@@ -113,6 +121,10 @@ void TileStreamDisplay::loop() {
     this->apply_update_(update);
     heap_caps_free(update.data);
   }
+
+  Sound sound;
+  while (this->sounds_ != nullptr && xQueueReceive(this->sounds_, &sound, 0) == pdTRUE)
+    this->sound_callbacks_.call(std::string(sound.name));
 }
 
 void TileStreamDisplay::start_stream_() {
@@ -196,6 +208,10 @@ void TileStreamDisplay::on_ws_event_(void *arg, esp_event_base_t base, int32_t e
 }
 
 void TileStreamDisplay::on_ws_data_(const esp_websocket_event_data_t *event) {
+  if (event->op_code == WS_OPCODE_TEXT) {
+    this->on_ws_text_(event);
+    return;
+  }
   const bool binary = event->op_code == WS_OPCODE_BINARY ||
                       (event->op_code == WS_OPCODE_CONTINUATION && this->rx_buf_ != nullptr);
   if (!binary || event->payload_len <= 0)
@@ -223,6 +239,19 @@ void TileStreamDisplay::on_ws_data_(const esp_websocket_event_data_t *event) {
   // The server keeps one update in flight, so a full queue means something is badly wrong.
   if (xQueueSend(this->updates_, &update, 0) != pdTRUE)
     heap_caps_free(update.data);
+}
+
+// "s <name>": play a sound. Text messages are tiny, so they always arrive whole.
+void TileStreamDisplay::on_ws_text_(const esp_websocket_event_data_t *event) {
+  const int len = event->data_len;
+  if (event->payload_offset != 0 || len != event->payload_len || len < 3 || event->data_ptr[0] != 's' ||
+      event->data_ptr[1] != ' ')
+    return;
+  Sound sound{};
+  memcpy(sound.name, event->data_ptr + 2, std::min<size_t>(len - 2, sizeof(sound.name) - 1));
+  // Dropped if loop() is behind; a missing click is better than a late one.
+  if (this->sounds_ != nullptr)
+    xQueueSend(this->sounds_, &sound, 0);
 }
 
 void TileStreamDisplay::drop_partial_() {

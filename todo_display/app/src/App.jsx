@@ -13,6 +13,7 @@ import { tabTitle } from './components/menu/tabs.js'
 import { useListSelection } from './hooks/useListSelection.js'
 import { useMinuteClock } from './hooks/useMinuteClock.js'
 import { useOrientation } from './hooks/useOrientation.js'
+import { useTapSound } from './hooks/useTapSound.js'
 import { useTodos } from './hooks/useTodos.js'
 import { FILTERS, byUpcoming } from './lib/todos.js'
 
@@ -27,6 +28,7 @@ export default function App() {
   const [tab, setTab] = useState('list') // 'list' | 'add' | 'edit'
   const [editingId, setEditingId] = useState(null)
   const [menuOpen, setMenuOpen] = useState(false)
+  const sound = useTapSound()
 
   // Back to the list if the todo being edited disappears (e.g. removed in HA).
   const editing = tab === 'edit' ? todos.find((t) => t.id === editingId) : null
@@ -71,6 +73,8 @@ export default function App() {
             setMenuOpen(false)
           }}
           onClose={() => setMenuOpen(false)}
+          muted={sound.muted}
+          onToggleMuted={sound.toggleMuted}
         />
       )}
     </>

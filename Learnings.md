@@ -84,6 +84,22 @@ CrowPanel 7.0" unless marked otherwise.
 - **Bounce buffers (10 lines)** keep the picture stable while Wi-Fi and the JPEG
   decoder compete for PSRAM. They also keep direct framebuffer writes (copy ops)
   cache-coherent. Without bounce buffers the panel must not advertise `hello 2`.
+- **Speaker: NS4168 I2S amp, confirmed working.** BCLK GPIO42, LRCLK GPIO18, data
+  GPIO17 (`i2s_audio` + `speaker: dac_type: external, channel: mono`). The "Advance"
+  7.0" uses GPIO4/5/6 instead; don't copy those. A ~4Ω laptop speaker on the speaker
+  socket is fine; its outputs are bridge-tied, so neither wire is ground and
+  polarity doesn't matter. `esphome/crowpanel-audio-test.yaml` is a smoke test (tone
+  + test screen).
+- **Keep the I2S speaker running (`timeout: never`, `spk.start()` on boot) for
+  clicks.** `speaker.play()` on a stopped speaker starts it but drops the data while
+  the driver comes up, so a click after idle would be silent. Silence costs ~32KB/s
+  of I2S DMA, nothing audible. Start it from `on_boot` with `priority: -100`: at the
+  default priority the speaker isn't set up yet and `start()` silently does nothing.
+- **Tap sounds come from the page, not the touch handler.** The page knows whether a
+  tap hit a button; a bubble-phase `click` listener on `window` never sees the click a
+  drag swallows. Server sends `s click` only to panels whose `hello` lists `sound`.
+- **Backlight (GPIO2) is off unless a config drives it.** A test firmware without the
+  `ledc` backlight light looks blank even though the framebuffer is drawn.
 - **RGB565 bands gradients.** Design with flat colours. The old dark radial
   gradient banded visibly.
 

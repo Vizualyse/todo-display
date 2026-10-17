@@ -21,7 +21,13 @@ esphome:
   platformio_options:
     board_build.flash_mode: dio
   on_boot:
-    - script.execute: screen_idle
+    # Late, so the speaker is set up before it's started.
+    priority: -100
+    then:
+      - script.execute: screen_idle
+      # Keep the speaker running (silent) so a click plays at once instead of being
+      # lost while the I2S driver starts.
+      - lambda: id(spk).start();
 
 esp32:
   board: esp32-s3-devkitc-1
@@ -74,6 +80,21 @@ display:
     id: panel
     url: ${stream_url}
     # Pins, timings and 15MHz PCLK default to the CrowPanel 7.0"; override here if needed.
+    # The page asks for a click when a tap hits a button (muted from the heart menu).
+    on_sound:
+      - if:
+          condition:
+            lambda: return sound == "click";
+          then:
+            - lambda: |-
+                // 8ms 2.5kHz tick with a fast decay, 16kHz 16-bit mono.
+                static std::vector<int16_t> pcm = [] {
+                  std::vector<int16_t> v(128);
+                  for (size_t i = 0; i < v.size(); i++)
+                    v[i] = 9000 * expf(-float(i) / 24) * sinf(2 * M_PI * 2500 * i / 16000);
+                  return v;
+                }();
+                id(spk).play(reinterpret_cast<const uint8_t *>(pcm.data()), pcm.size() * 2);
 
 i2c:
   sda: GPIO19
@@ -124,6 +145,19 @@ script:
     then:
       - delay: ${screen_timeout}
       - light.turn_off: { id: backlight, transition_length: 1s }
+
+# NS4168 I2S amp on the speaker socket.
+i2s_audio:
+  i2s_lrclk_pin: GPIO18
+  i2s_bclk_pin: GPIO42
+
+speaker:
+  - platform: i2s_audio
+    id: spk
+    dac_type: external
+    i2s_dout_pin: GPIO17
+    channel: mono
+    timeout: never
 
 output:
   - platform: ledc

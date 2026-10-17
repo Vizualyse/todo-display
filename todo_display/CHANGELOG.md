@@ -3,6 +3,16 @@
 Bump `version` in `config.yaml` with every change: Home Assistant only rebuilds
 the add-on when the version changes.
 
+## 0.6.0
+
+- Tap sounds: a tap that lands on a button asks the panel to play a short click.
+  Taps on empty space and drags stay silent. The heart menu has a *Tap sounds*
+  On/Off switch (display only; remembered until the add-on restarts, like the
+  list filter).
+- Stream protocol: panels advertise `sound` in `hello` (`hello 2 sound`), and only
+  those get `s click` text messages. Older firmware is unaffected. Needs the
+  updated ESPHome config (speaker + `on_sound`) on the panel.
+
 ## 0.5.1
 
 - Page split from one `App.jsx` into components, hooks and helpers under

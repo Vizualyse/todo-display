@@ -1,7 +1,8 @@
-import { ListIcon, PlusIcon } from '../ui/icons.jsx'
+import { DISPLAY } from '../../config/params.js'
+import { ListIcon, MutedIcon, PlusIcon, SoundIcon } from '../ui/icons.jsx'
 import { TABS } from './tabs.js'
 
-export function TabMenu({ value, onChange, onClose }) {
+export function TabMenu({ value, onChange, onClose, muted, onToggleMuted }) {
   return (
     <>
       {/* Flat tint, no blur or shadow: the panel is RGB565. A tap outside closes the menu. */}
@@ -27,6 +28,32 @@ export function TabMenu({ value, onChange, onClose }) {
             </button>
           )
         })}
+        {/* Tap sounds play on the panel only, so the browser view has no switch. */}
+        {DISPLAY && (
+          <>
+            <p className="mt-1 border-t border-blush-200 px-3 pt-3 pb-2 text-[11px] font-medium tracking-[0.22em] text-plum-soft uppercase">
+              Sound
+            </p>
+            <button
+              role="menuitemcheckbox"
+              aria-checked={!muted}
+              onClick={onToggleMuted}
+              className="flex h-12 w-full items-center gap-3 rounded-2xl px-3 text-left font-serif text-[19px] text-plum"
+            >
+              <span className="grid size-7 place-items-center rounded-full bg-blush-100 text-rosegold">
+                {muted ? <MutedIcon /> : <SoundIcon />}
+              </span>
+              <span className="flex-1">Tap sounds</span>
+              <span
+                className={`rounded-full px-2.5 py-0.5 font-sans text-[11px] font-medium tracking-[0.18em] uppercase ${
+                  muted ? 'bg-blush-100 text-plum-soft' : 'bg-plum text-blush-100'
+                }`}
+              >
+                {muted ? 'Off' : 'On'}
+              </span>
+            </button>
+          </>
+        )}
       </div>
     </>
   )

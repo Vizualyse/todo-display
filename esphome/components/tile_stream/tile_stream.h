@@ -3,6 +3,7 @@
 #ifdef USE_ESP32
 
 #include "esphome/components/display/display.h"
+#include "esphome/core/automation.h"
 #include "esphome/core/component.h"
 #include "esphome/core/helpers.h"
 
@@ -44,6 +45,11 @@ class TileStreamDisplay : public display::Display {
   void touch_move(int x, int y);
   void touch_up();
   bool is_stream_connected() const { return this->ws_connected_; }
+  /// Sounds the page asks for (e.g. "click"). Without callbacks the panel doesn't
+  /// advertise sound, so the server never sends any.
+  void add_on_sound_callback(std::function<void(std::string)> &&callback) {
+    this->sound_callbacks_.add(std::move(callback));
+  }
 
   void set_url(const std::string &url) { this->url_ = url; }
   void set_dimensions(int width, int height) {
@@ -76,6 +82,9 @@ class TileStreamDisplay : public display::Display {
     uint8_t *data;
     size_t len;
   };
+  struct Sound {
+    char name[16];
+  };
 
   int get_width_internal() override { return this->width_; }
   int get_height_internal() override { return this->height_; }
@@ -85,6 +94,7 @@ class TileStreamDisplay : public display::Display {
   void apply_update_(const Update &update);
   void copy_rect_(int src_x, int src_y, int dst_x, int dst_y, int w, int h);
   void on_ws_data_(const esp_websocket_event_data_t *event);
+  void on_ws_text_(const esp_websocket_event_data_t *event);
   void drop_partial_();
   static void on_ws_event_(void *arg, esp_event_base_t base, int32_t event_id, void *event_data);
   static int on_jpeg_draw_(JPEGDRAW *draw);
@@ -106,6 +116,8 @@ class TileStreamDisplay : public display::Display {
 
   // Written by the WebSocket task, consumed in loop().
   QueueHandle_t updates_{nullptr};
+  QueueHandle_t sounds_{nullptr};
+  CallbackManager<void(std::string)> sound_callbacks_;
   std::atomic<bool> ws_connected_{false};
   std::atomic<bool> ws_just_connected_{false};
   uint8_t *rx_buf_{nullptr};
@@ -116,6 +128,13 @@ class TileStreamDisplay : public display::Display {
   HighFrequencyLoopRequester high_freq_;
   int last_touch_x_{0};
   int last_touch_y_{0};
+};
+
+class SoundTrigger : public Trigger<std::string> {
+ public:
+  explicit SoundTrigger(TileStreamDisplay *parent) {
+    parent->add_on_sound_callback([this](const std::string &sound) { this->trigger(sound); });
+  }
 };
 
 }  // namespace tile_stream
