@@ -3,6 +3,16 @@
 Bump `version` in `config.yaml` with every change: Home Assistant only rebuilds
 the add-on when the version changes.
 
+## 0.4.0
+
+- Heart menu button in the top right corner opens a popover to switch tabs.
+- New "Add a todo" tab: on-screen keyboard (the panel is touch only), list
+  picker and quick due dates (today, tomorrow, weekend, next week). Adds through
+  Home Assistant's `todo.add_item`.
+- Each open todo with a due date shows the time left (or how long it's overdue).
+  Date-only due dates count down to the end of that day.
+- API: `GET /api/lists`, `POST /api/todos` (`{list, title, due}`).
+
 ## 0.3.0
 
 - Smooth drag-scrolling: scrolls are sent as a copy of pixels the panel already

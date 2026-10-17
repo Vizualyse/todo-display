@@ -17,12 +17,23 @@ export function createMockSource({ onChange }) {
     { title: 'Descale the coffee machine', list: 0, due: day(1), done: false },
   ].map((t, i) => ({ id: `mock|${i}`, title: t.title, list: lists[t.list], listIndex: t.list, due: t.due, done: t.done }))
 
+  let nextId = todos.length
+
   return {
+    get lists() {
+      return lists.map((name, index) => ({ id: `mock-${index}`, name, index }))
+    },
     get todos() {
       return todos
     },
     async setDone(id, done) {
       todos = todos.map((t) => (t.id === id ? { ...t, done } : t))
+      onChange()
+    },
+    async add(listId, title, due) {
+      const index = lists.findIndex((_, i) => `mock-${i}` === listId)
+      if (index < 0) throw new Error(`unknown list ${listId}`)
+      todos = [...todos, { id: `mock|${nextId++}`, title, list: lists[index], listIndex: index, due, done: false }]
       onChange()
     },
   }

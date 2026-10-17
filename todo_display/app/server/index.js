@@ -102,8 +102,24 @@ function auth(req, res, next) {
 const app = express()
 app.disable('x-powered-by')
 app.use(auth)
+app.use(express.json({ limit: '4kb' }))
 
 app.get('/api/todos', (req, res) => res.json(source.todos))
+app.get('/api/lists', (req, res) => res.json(source.lists))
+
+app.post('/api/todos', async (req, res) => {
+  const { list, title, due } = req.body ?? {}
+  const summary = typeof title === 'string' ? title.trim() : ''
+  if (!summary || summary.length > 255) return res.status(400).json({ error: 'title required' })
+  if (due != null && !/^\d{4}-\d{2}-\d{2}$/.test(due)) return res.status(400).json({ error: 'due must be YYYY-MM-DD' })
+  try {
+    await source.add(String(list), summary, due ?? null)
+    res.json({ ok: true })
+  } catch (err) {
+    log(`add failed: ${err.message}`)
+    res.status(502).json({ error: err.message })
+  }
+})
 
 app.post('/api/todos/:id/toggle', async (req, res) => {
   const todo = source.todos.find((t) => t.id === req.params.id)

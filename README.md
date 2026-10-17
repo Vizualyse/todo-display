@@ -40,6 +40,8 @@ HA_URL=http://homeassistant.local:8123 HA_TOKEN_FILE=../../.ha-token DISPLAY_SEC
 ```
 
 Inside the add-on, todos come from Home Assistant automatically (Supervisor API, no token needed).
+Tap the heart in the top right corner to switch between the list and the *Add a todo* tab, which has
+its own on-screen keyboard (a physical keyboard also works in a browser).
 
 - `http://localhost:8099/` — the page as a normal web page
 - `http://localhost:8099/preview` — a browser stand-in for the panel: same protocol, click to "touch",

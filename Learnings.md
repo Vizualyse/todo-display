@@ -115,6 +115,13 @@ CrowPanel 7.0" unless marked otherwise.
   phase) separately.
 - **A drag must swallow the click that ends it**, or dragging ticks the item under
   the finger.
+- **The panel has no keyboard.** Text entry needs an on-screen keyboard in the page;
+  each key press is a tap and a tiny tile update. Keep a physical-keyboard
+  `keydown` handler too for the browser/ingress view.
+- **Use `minmax(0,1fr)`, not `1fr`, for grid columns holding nowrap content.** A
+  `1fr` column grows to its min-content width (nowrap chips, long titles), the
+  `overflow-hidden` shell then gets scrolled sideways by clicks, and the whole
+  frame shifts. Check both orientations with screenshots after layout changes.
 - **Fonts:** self-hosted via `@fontsource` (Playfair Display, Jost, Great Vibes).
   The add-on has no internet dependency at render time.
 

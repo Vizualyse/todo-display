@@ -2,8 +2,8 @@ import WebSocket from 'ws'
 
 /**
  * Home Assistant todo source over the WebSocket API. Subscribes to each todo
- * entity (HA pushes the full item list on subscribe and on every change) and
- * ticks items with the todo.update_item service.
+ * entity (HA pushes the full item list on subscribe and on every change), ticks
+ * items with todo.update_item and adds them with todo.add_item.
  */
 export function createHomeAssistantSource({ url, token, entities, log, onChange }) {
   const lists = new Map() // entity_id -> { name, items }
@@ -86,6 +86,9 @@ export function createHomeAssistantSource({ url, token, entities, log, onChange 
   connect()
 
   return {
+    get lists() {
+      return [...lists].map(([entityId, list], index) => ({ id: entityId, name: list.name, index }))
+    },
     get todos() {
       return [...lists].flatMap(([entityId, list], listIndex) =>
         list.items.map((item) => ({
@@ -106,6 +109,17 @@ export function createHomeAssistantSource({ url, token, entities, log, onChange 
         service: 'update_item',
         target: { entity_id: id.slice(0, sep) },
         service_data: { item: id.slice(sep + 1), status: done ? 'completed' : 'needs_action' },
+      })
+    },
+    /** due is "YYYY-MM-DD" or null. HA pushes the new item through the subscription. */
+    async add(listId, title, due) {
+      if (!lists.has(listId)) throw new Error(`unknown list ${listId}`)
+      await request({
+        type: 'call_service',
+        domain: 'todo',
+        service: 'add_item',
+        target: { entity_id: listId },
+        service_data: { item: title, ...(due && { due_date: due }) },
       })
     },
   }
