@@ -41,7 +41,8 @@ HA_URL=http://homeassistant.local:8123 HA_TOKEN_FILE=../../.ha-token DISPLAY_SEC
 
 Inside the add-on, todos come from Home Assistant automatically (Supervisor API, no token needed).
 Tap the heart in the top right corner to switch between the list and the *Add a todo* tab, which has
-its own on-screen keyboard (a physical keyboard also works in a browser).
+its own on-screen keyboard (a physical keyboard also works in a browser). Tap a todo's circle to tick
+it, or the rest of the card to edit its title and due date.
 
 - `http://localhost:8099/` — the page as a normal web page
 - `http://localhost:8099/preview` — a browser stand-in for the panel: same protocol, click to "touch",
@@ -70,6 +71,9 @@ its own on-screen keyboard (a physical keyboard also works in a browser).
 2. In `crowpanel-todo.yaml` set `display_key` to the add-on's `display_secret`, and `stream_url` to your
    HA IP (fastest) or the `wss://todo.vizualyse.uk/...` line.
 3. First flash over USB, OTA after that.
+
+The backlight turns off after 30s without a touch (`screen_timeout` in `crowpanel-todo.yaml`). A tap
+wakes it, and that tap isn't passed on to the page.
 
 ## Auth
 

@@ -3,6 +3,14 @@
 Bump `version` in `config.yaml` with every change: Home Assistant only rebuilds
 the add-on when the version changes.
 
+## 0.5.0
+
+- Tap a card to edit its title and due date (the circle still ticks it). The
+  list can't be changed: Home Assistant has no way to move an item.
+- Due picker: "Custom" replaces "Next week" and opens a calendar in place of
+  the keyboard. The chip then shows the chosen date.
+- API: `PATCH /api/todos/:id` (`{title?, due?}`, `due: null` clears it).
+
 ## 0.4.1
 
 - List is ordered upcoming first: soonest deadline at the top (overdue first),

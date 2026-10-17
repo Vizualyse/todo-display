@@ -30,6 +30,12 @@ export function createMockSource({ onChange }) {
       todos = todos.map((t) => (t.id === id ? { ...t, done } : t))
       onChange()
     },
+    async update(id, { title, due }) {
+      todos = todos.map((t) =>
+        t.id === id ? { ...t, ...(title !== undefined && { title }), ...(due !== undefined && { due }) } : t,
+      )
+      onChange()
+    },
     async add(listId, title, due) {
       const index = lists.findIndex((_, i) => `mock-${i}` === listId)
       if (index < 0) throw new Error(`unknown list ${listId}`)

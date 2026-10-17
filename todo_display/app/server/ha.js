@@ -3,7 +3,7 @@ import WebSocket from 'ws'
 /**
  * Home Assistant todo source over the WebSocket API. Subscribes to each todo
  * entity (HA pushes the full item list on subscribe and on every change), ticks
- * items with todo.update_item and adds them with todo.add_item.
+ * and edits items with todo.update_item and adds them with todo.add_item.
  */
 export function createHomeAssistantSource({ url, token, entities, log, onChange }) {
   const lists = new Map() // entity_id -> { name, items }
@@ -109,6 +109,21 @@ export function createHomeAssistantSource({ url, token, entities, log, onChange 
         service: 'update_item',
         target: { entity_id: id.slice(0, sep) },
         service_data: { item: id.slice(sep + 1), status: done ? 'completed' : 'needs_action' },
+      })
+    },
+    /** title/due undefined = unchanged; due null clears it. */
+    async update(id, { title, due }) {
+      const sep = id.indexOf('|')
+      await request({
+        type: 'call_service',
+        domain: 'todo',
+        service: 'update_item',
+        target: { entity_id: id.slice(0, sep) },
+        service_data: {
+          item: id.slice(sep + 1),
+          ...(title !== undefined && { rename: title }),
+          ...(due !== undefined && { due_date: due }),
+        },
       })
     },
     /** due is "YYYY-MM-DD" or null. HA pushes the new item through the subscription. */

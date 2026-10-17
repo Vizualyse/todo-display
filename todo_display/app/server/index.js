@@ -121,6 +121,23 @@ app.post('/api/todos', async (req, res) => {
   }
 })
 
+// Body: { title?, due? }. A due of null clears it; leaving it out keeps it.
+app.patch('/api/todos/:id', async (req, res) => {
+  const todo = source.todos.find((t) => t.id === req.params.id)
+  if (!todo) return res.status(404).json({ error: 'no such todo' })
+  const { title, due } = req.body ?? {}
+  const summary = title === undefined ? undefined : typeof title === 'string' ? title.trim() : ''
+  if (summary !== undefined && (!summary || summary.length > 255)) return res.status(400).json({ error: 'title required' })
+  if (due != null && !/^\d{4}-\d{2}-\d{2}$/.test(due)) return res.status(400).json({ error: 'due must be YYYY-MM-DD' })
+  try {
+    await source.update(todo.id, { title: summary, due })
+    res.json({ ok: true })
+  } catch (err) {
+    log(`update failed: ${err.message}`)
+    res.status(502).json({ error: err.message })
+  }
+})
+
 app.post('/api/todos/:id/toggle', async (req, res) => {
   const todo = source.todos.find((t) => t.id === req.params.id)
   if (!todo) return res.status(404).json({ error: 'no such todo' })

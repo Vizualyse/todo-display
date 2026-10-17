@@ -65,7 +65,7 @@ const DUE_CHOICES = [
   { id: 'tomorrow', label: 'Tomorrow', date: (d) => addDays(d, 1) },
   // Today if it is already the weekend, otherwise the coming Saturday.
   { id: 'weekend', label: 'Weekend', date: (d) => addDays(d, d.getDay() === 0 ? 0 : 6 - d.getDay()) },
-  { id: 'week', label: 'Next week', date: (d) => addDays(d, 7) },
+  { id: 'custom', label: 'Custom' }, // picked on a calendar
 ]
 
 const FILTERS = [
@@ -74,10 +74,12 @@ const FILTERS = [
   { id: 'all', label: 'All', test: () => true },
 ]
 
+// Tabs in the heart menu. Editing is reached by tapping a card, so it has no entry.
 const TABS = [
   { id: 'list', label: 'My list', title: 'My lovely list' },
   { id: 'add', label: 'Add a todo', title: 'Something new' },
 ]
+const EDIT_TITLE = 'A little change'
 
 function useOrientation() {
   const get = () => FORCED_ORIENTATION || (innerHeight > innerWidth ? 'portrait' : 'landscape')
@@ -127,25 +129,35 @@ function useTodos() {
     fetch(`api/todos/${encodeURIComponent(id)}/toggle`, { method: 'POST' })
   }
 
-  /** Resolves once the source accepted it; the new item arrives through the event stream. */
-  const add = async ({ list, title, due }) => {
-    const res = await fetch('api/todos', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ list, title, due }),
-    })
+  const send = async (method, url, body) => {
+    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || `HTTP ${res.status}`)
   }
-  return { todos, lists, toggle, add }
+  // Both resolve once the source accepted the change; it arrives through the event stream.
+  const add = ({ list, title, due }) => send('POST', 'api/todos', { list, title, due })
+  /** `due` left out keeps the current one; null clears it. */
+  const update = ({ id, ...changes }) => send('PATCH', `api/todos/${encodeURIComponent(id)}`, changes)
+  return { todos, lists, toggle, add, update }
 }
 
 export default function App() {
   const orientation = useOrientation()
   const now = useMinuteClock()
-  const { todos, lists, toggle, add } = useTodos()
+  const { todos, lists, toggle, add, update } = useTodos()
   const [filter, setFilter] = useState('open')
-  const [tab, setTab] = useState('list')
+  const [tab, setTab] = useState('list') // 'list' | 'add' | 'edit'
+  const [editingId, setEditingId] = useState(null)
   const [menuOpen, setMenuOpen] = useState(false)
+
+  // Back to the list if the todo being edited disappears (e.g. removed in HA).
+  const editing = tab === 'edit' ? todos.find((t) => t.id === editingId) : null
+  useEffect(() => {
+    if (tab === 'edit' && !editing) setTab('list')
+  }, [tab, editing])
+  const edit = (id) => {
+    setEditingId(id)
+    setTab('edit')
+  }
 
   const showList = (f) => {
     setFilter(f)
@@ -155,8 +167,13 @@ export default function App() {
   const header = <Header now={now} clearMenu={orientation !== 'landscape'} />
   const summary = <Summary todos={todos} />
   const filters = <Filters value={tab === 'list' ? filter : null} onChange={showList} todos={todos} />
-  const list = <TodoList todos={visible} onToggle={toggle} now={now} />
-  const form = <AddForm lists={lists} onAdd={add} onAdded={() => showList('open')} compact={orientation === 'landscape'} />
+  const list = <TodoList todos={visible} onToggle={toggle} onEdit={edit} now={now} />
+  const compact = orientation === 'landscape'
+  const form = editing ? (
+    <TodoForm key={editing.id} todo={editing} onSubmit={update} onDone={() => setTab('list')} compact={compact} />
+  ) : (
+    <TodoForm key="add" lists={lists} onSubmit={add} onDone={() => showList('open')} compact={compact} />
+  )
   const menu = (
     <>
       <MenuButton open={menuOpen} onClick={() => setMenuOpen(!menuOpen)} />
@@ -185,7 +202,7 @@ export default function App() {
         <main className="flex min-h-0 flex-col gap-4">
           {/* Leaves room for the menu button in the top right corner. */}
           <h2 className="flex h-11 shrink-0 items-center pr-14 font-serif text-[26px] leading-none font-medium italic">
-            {TABS.find((t) => t.id === tab).title}
+            {TABS.find((t) => t.id === tab)?.title ?? EDIT_TITLE}
           </h2>
           {tab === 'list' ? list : form}
         </main>
@@ -427,7 +444,7 @@ function useDragScroll() {
   return ref
 }
 
-function TodoList({ todos, onToggle, now }) {
+function TodoList({ todos, onToggle, onEdit, now }) {
   if (todos.length === 0) {
     return (
       <div className="grid min-h-0 flex-1 place-items-center rounded-[28px] border border-dashed border-blush-300">
@@ -435,10 +452,10 @@ function TodoList({ todos, onToggle, now }) {
       </div>
     )
   }
-  return <ScrollingList todos={todos} onToggle={onToggle} now={now} />
+  return <ScrollingList todos={todos} onToggle={onToggle} onEdit={onEdit} now={now} />
 }
 
-function ScrollingList({ todos, onToggle, now }) {
+function ScrollingList({ todos, onToggle, onEdit, now }) {
   const ref = useDragScroll()
   return (
     <ul
@@ -448,62 +465,68 @@ function ScrollingList({ todos, onToggle, now }) {
     >
       {todos.map((t) => (
         <li key={t.id}>
-          <TodoRow todo={t} onToggle={onToggle} due={formatDue(t.due, now)} left={timeLeft(t.due, now)} />
+          <TodoRow todo={t} onToggle={onToggle} onEdit={onEdit} due={formatDue(t.due, now)} left={timeLeft(t.due, now)} />
         </li>
       ))}
     </ul>
   )
 }
 
-function TodoRow({ todo, onToggle, due, left }) {
+/** The circle ticks the todo; the rest of the card opens it for editing. */
+function TodoRow({ todo, onToggle, onEdit, due, left }) {
   const overdue = due?.overdue && !todo.done
   return (
-    <button
-      onClick={() => onToggle(todo.id)}
-      className="flex w-full items-center gap-4 rounded-[22px] border border-blush-200 bg-pearl px-5 py-3.5 text-left"
-    >
-      <span
-        className={`grid size-9 shrink-0 place-items-center rounded-full border-[1.5px] ${
-          todo.done ? 'border-rosegold bg-rosegold text-pearl' : 'border-blush-300'
-        }`}
+    <div className="flex w-full items-center rounded-[22px] border border-blush-200 bg-pearl">
+      <button
+        onClick={() => onToggle(todo.id)}
+        aria-label={todo.done ? 'Mark as not done' : 'Mark as done'}
+        className="grid shrink-0 place-items-center self-stretch pr-4 pl-5"
       >
-        {todo.done && (
-          <svg viewBox="0 0 24 24" className="size-[18px]" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-            <path d="M5 12.5l4.5 4.5L19 7.5" />
-          </svg>
-        )}
-      </span>
-      <span className="min-w-0 flex-1">
         <span
-          className={`block truncate font-serif text-[20px] leading-snug ${
-            todo.done ? 'text-plum-soft/60 italic line-through decoration-blush-300' : 'text-plum'
+          className={`grid size-9 place-items-center rounded-full border-[1.5px] ${
+            todo.done ? 'border-rosegold bg-rosegold text-pearl' : 'border-blush-300'
           }`}
         >
-          {todo.title}
-        </span>
-        <span className="mt-1 flex items-center gap-2 text-[11px] font-medium tracking-[0.22em] text-plum-soft uppercase">
-          <span className={`size-1.5 rounded-full ${LIST_DOTS[todo.listIndex % LIST_DOTS.length]}`} />
-          {todo.list}
-          {due && (
-            <>
-              <span className="text-blush-300">·</span>
-              <span className={overdue ? 'text-rosegold-deep' : undefined}>{due.label}</span>
-            </>
+          {todo.done && (
+            <svg viewBox="0 0 24 24" className="size-[18px]" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M5 12.5l4.5 4.5L19 7.5" />
+            </svg>
           )}
         </span>
-      </span>
-      {left && !todo.done && (
-        <span className="shrink-0 text-right">
-          <span className={`block font-serif text-[18px] leading-none italic tabular-nums ${overdue ? 'text-rosegold-deep' : 'text-plum'}`}>
-            {left.value}
+      </button>
+      <button onClick={() => onEdit(todo.id)} className="flex min-w-0 flex-1 items-center gap-4 py-3.5 pr-5 text-left">
+        <span className="min-w-0 flex-1">
+          <span
+            className={`block truncate font-serif text-[20px] leading-snug ${
+              todo.done ? 'text-plum-soft/60 italic line-through decoration-blush-300' : 'text-plum'
+            }`}
+          >
+            {todo.title}
           </span>
-          <span className="mt-1.5 block text-[10px] font-medium tracking-[0.22em] text-plum-soft uppercase">
-            {overdue ? 'overdue' : 'left'}
+          <span className="mt-1 flex items-center gap-2 text-[11px] font-medium tracking-[0.22em] text-plum-soft uppercase">
+            <span className={`size-1.5 rounded-full ${LIST_DOTS[todo.listIndex % LIST_DOTS.length]}`} />
+            {todo.list}
+            {due && (
+              <>
+                <span className="text-blush-300">·</span>
+                <span className={overdue ? 'text-rosegold-deep' : undefined}>{due.label}</span>
+              </>
+            )}
           </span>
         </span>
-      )}
-      {overdue && <Heart className="size-5 shrink-0 text-rosegold" />}
-    </button>
+        {left && !todo.done && (
+          <span className="shrink-0 text-right">
+            <span className={`block font-serif text-[18px] leading-none italic tabular-nums ${overdue ? 'text-rosegold-deep' : 'text-plum'}`}>
+              {left.value}
+            </span>
+            <span className="mt-1.5 block text-[10px] font-medium tracking-[0.22em] text-plum-soft uppercase">
+              {overdue ? 'overdue' : 'left'}
+            </span>
+          </span>
+        )}
+        {overdue && <Heart className="size-5 shrink-0 text-rosegold" />}
+      </button>
+    </div>
   )
 }
 
@@ -512,23 +535,56 @@ const KEY_ROWS = {
   symbols: ['1234567890', "-/:;()&@'", '.,?!"£'],
 }
 
+/** The form's starting due choice: a quick chip when one matches, otherwise a custom date. */
+function initialDue(due) {
+  if (!due) return { id: 'none', custom: null }
+  const date = isDateOnly(due) ? due : isoDate(parseDue(due))
+  const quick = DUE_CHOICES.find((c) => c.id !== 'none' && c.date && isoDate(c.date(new Date())) === date)
+  return quick ? { id: quick.id, custom: null } : { id: 'custom', custom: date }
+}
+
 /**
- * New todo form. The panel has touch only, so it brings its own keyboard; a physical
- * keyboard works too when the page is opened in a browser.
+ * Add or edit a todo (edit when `todo` is given). The panel has touch only, so the form
+ * brings its own keyboard; a physical keyboard works too when the page is opened in a
+ * browser. "Custom" swaps the keyboard for a calendar.
  */
-function AddForm({ lists, onAdd, onAdded, compact }) {
-  const [text, setText] = useState('')
+function TodoForm({ todo, lists, onSubmit, onDone, compact }) {
+  const editing = Boolean(todo)
+  const start = initialDue(todo?.due)
+  const [text, setText] = useState(todo?.title ?? '')
   const [listId, setListId] = useState(null)
-  const [dueId, setDueId] = useState('none')
+  const [dueId, setDueId] = useState(start.id)
+  const [customDate, setCustomDate] = useState(start.custom)
+  // An untouched due is not sent, so editing keeps a due time HA already has.
+  const [dueTouched, setDueTouched] = useState(false)
+  const [picking, setPicking] = useState(false)
   const [shift, setShift] = useState(false)
   const [symbols, setSymbols] = useState(false)
   const [status, setStatus] = useState(null) // { busy } | { error }
 
-  const list = lists.find((l) => l.id === listId) ?? lists[0]
+  const list = editing ? null : (lists.find((l) => l.id === listId) ?? lists[0])
   const title = text.trim()
-  const canAdd = Boolean(title && list && !status?.busy)
+  const canSubmit = Boolean(title && (editing || list) && !status?.busy)
   // Capitalise the first letter of the todo and of each sentence.
   const caps = shift || !text.trim() || /[.!?]\s$/.test(text)
+
+  const chooseDue = (id) => {
+    if (id === 'custom') return setPicking(true)
+    setDueId(id)
+    setDueTouched(true)
+    setPicking(false)
+  }
+  const pickDate = (date) => {
+    setCustomDate(date)
+    setDueId('custom')
+    setDueTouched(true)
+    setPicking(false)
+  }
+  const dueValue = () => {
+    if (dueId === 'custom') return customDate
+    const date = DUE_CHOICES.find((c) => c.id === dueId).date(new Date())
+    return date && isoDate(date)
+  }
 
   const type = (s) => {
     setStatus(null)
@@ -536,17 +592,15 @@ function AddForm({ lists, onAdd, onAdded, compact }) {
   }
   const backspace = () => setText((t) => t.slice(0, -1))
   const submit = async () => {
-    if (!canAdd) return
+    if (!canSubmit) return
     setStatus({ busy: true })
     try {
-      const date = DUE_CHOICES.find((c) => c.id === dueId).date(new Date())
-      await onAdd({ list: list.id, title, due: date && isoDate(date) })
-      setText('')
-      setDueId('none')
-      setStatus(null)
-      onAdded()
+      const due = dueValue()
+      if (editing) await onSubmit({ id: todo.id, title, ...(dueTouched && { due }) })
+      else await onSubmit({ list: list.id, title, due })
+      onDone()
     } catch (err) {
-      setStatus({ error: `Couldn't add that: ${err.message}` })
+      setStatus({ error: `Couldn't save that: ${err.message}` })
     }
   }
 
@@ -571,82 +625,167 @@ function AddForm({ lists, onAdd, onAdded, compact }) {
   }
   const keyHeight = compact ? 'h-[42px]' : 'h-14'
   const rows = KEY_ROWS[symbols ? 'symbols' : 'letters']
+  const shortDate = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
       {/* row-reverse: once the text is wider than the field, its start is clipped, not the caret. */}
-      <div
-        className={`flex shrink-0 flex-row-reverse items-center overflow-hidden rounded-[22px] border-[1.5px] border-rosegold bg-pearl px-5 ${
-          compact ? 'h-[52px]' : 'h-16'
-        }`}
+      <button
+        onClick={() => setPicking(false)}
+        className={`flex shrink-0 flex-row-reverse items-center overflow-hidden rounded-[22px] border-[1.5px] bg-pearl px-5 ${
+          picking ? 'border-blush-300' : 'border-rosegold'
+        } ${compact ? 'h-[52px]' : 'h-16'}`}
       >
         <span className="flex-1" />
         {!text && <span className="ml-1.5 shrink-0 font-serif text-[21px] text-plum-soft/50 italic">What needs doing?</span>}
-        <span className="h-7 w-0.5 shrink-0 bg-rosegold" />
+        {!picking && <span className="h-7 w-0.5 shrink-0 bg-rosegold" />}
         <span className="shrink-0 font-serif text-[21px] whitespace-pre text-plum">{text}</span>
-      </div>
+      </button>
 
-      {!compact && <Label>Which list</Label>}
-      <div className={`flex shrink-0 gap-2 overflow-hidden ${compact ? '' : 'flex-wrap'}`}>
-        {lists.length === 0 && <p className="py-2.5 text-[13px] text-plum-soft italic">No todo lists found</p>}
-        {lists.map((l) => (
-          <Chip key={l.id} active={l.id === list?.id} onClick={() => setListId(l.id)}>
-            <span className={`size-1.5 rounded-full ${LIST_DOTS[l.index % LIST_DOTS.length]}`} />
-            {l.name}
-          </Chip>
-        ))}
+      {!compact && <Label>{editing ? 'List' : 'Which list'}</Label>}
+      <div className={`flex shrink-0 gap-2 overflow-hidden ${compact || editing ? '' : 'flex-wrap'}`}>
+        {editing ? (
+          <>
+            {/* HA can't move an item between lists, so the list is fixed while editing. */}
+            <Chip active>
+              <span className={`size-1.5 rounded-full ${LIST_DOTS[todo.listIndex % LIST_DOTS.length]}`} />
+              {todo.list}
+            </Chip>
+            <span className="flex-1" />
+            <Chip onClick={onDone}>Cancel</Chip>
+          </>
+        ) : (
+          <>
+            {lists.length === 0 && <p className="py-2.5 text-[13px] text-plum-soft italic">No todo lists found</p>}
+            {lists.map((l) => (
+              <Chip key={l.id} active={l.id === list?.id} onClick={() => setListId(l.id)}>
+                <span className={`size-1.5 rounded-full ${LIST_DOTS[l.index % LIST_DOTS.length]}`} />
+                {l.name}
+              </Chip>
+            ))}
+          </>
+        )}
       </div>
       {!compact && <Label>When</Label>}
       <div className="grid shrink-0 grid-cols-5 gap-1.5">
         {DUE_CHOICES.map((c) => (
-          <Chip key={c.id} narrow active={c.id === dueId} onClick={() => setDueId(c.id)}>
-            {c.label}
+          <Chip key={c.id} narrow active={c.id === 'custom' ? picking || dueId === 'custom' : !picking && c.id === dueId} onClick={() => chooseDue(c.id)}>
+            {c.id === 'custom' && dueId === 'custom' && customDate ? shortDate(customDate) : c.label}
           </Chip>
         ))}
       </div>
       {status?.error && <p className="shrink-0 truncate text-[12px] text-rosegold-deep">{status.error}</p>}
 
-      <div className="mt-auto flex shrink-0 flex-col gap-1.5">
-        {rows.map((row, i) => (
-          <div key={i} className={`flex gap-1.5 ${keyHeight}`}>
-            {i === 1 && <span className="flex-[0.5]" />}
-            {i === 2 &&
-              (symbols ? (
-                <span className="flex-[1.5]" />
-              ) : (
-                <Key wide active={shift} onPress={() => setShift(!shift)} label="Shift">
-                  <ShiftIcon />
-                </Key>
-              ))}
-            {[...row].map((ch) => (
-              <Key key={ch} onPress={() => press(ch)}>
-                {caps && !symbols ? ch.toUpperCase() : ch}
-              </Key>
+      {/* Fixed height, so swapping keyboard and calendar doesn't move anything else. */}
+      <div className={`mt-auto flex shrink-0 flex-col gap-1.5 ${compact ? 'h-[186px]' : 'h-[242px]'}`}>
+        {picking ? (
+          <Calendar value={dueId === 'custom' ? customDate : null} onPick={pickDate} onClose={() => setPicking(false)} />
+        ) : (
+          <>
+            {rows.map((row, i) => (
+              <div key={i} className={`flex gap-1.5 ${keyHeight}`}>
+                {i === 1 && <span className="flex-[0.5]" />}
+                {i === 2 &&
+                  (symbols ? (
+                    <span className="flex-[1.5]" />
+                  ) : (
+                    <Key wide active={shift} onPress={() => setShift(!shift)} label="Shift">
+                      <ShiftIcon />
+                    </Key>
+                  ))}
+                {[...row].map((ch) => (
+                  <Key key={ch} onPress={() => press(ch)}>
+                    {caps && !symbols ? ch.toUpperCase() : ch}
+                  </Key>
+                ))}
+                {i === 1 && <span className="flex-[0.5]" />}
+                {i === 2 && (
+                  <Key wide onPress={backspace} label="Delete">
+                    <BackspaceIcon />
+                  </Key>
+                )}
+              </div>
             ))}
-            {i === 1 && <span className="flex-[0.5]" />}
-            {i === 2 && (
-              <Key wide onPress={backspace} label="Delete">
-                <BackspaceIcon />
+            <div className={`flex gap-1.5 ${keyHeight}`}>
+              <Key wide onPress={() => setSymbols(!symbols)}>
+                <span className="text-[13px] font-medium tracking-[0.12em]">{symbols ? 'ABC' : '123'}</span>
               </Key>
-            )}
-          </div>
+              <Key grow="flex-[5]" onPress={() => type(' ')} label="Space">
+                <span className="text-[12px] font-medium tracking-[0.22em] text-plum-soft uppercase">space</span>
+              </Key>
+              <button
+                onClick={submit}
+                disabled={!canSubmit}
+                className="flex flex-[2.5] items-center justify-center gap-2 rounded-xl bg-plum text-[13px] font-medium tracking-[0.2em] text-blush-100 uppercase disabled:opacity-40"
+              >
+                {editing ? (status?.busy ? 'Saving' : 'Save') : status?.busy ? 'Adding' : 'Add'}
+                <Heart className="size-3.5 text-blush-300" />
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** Month grid for a custom due date, Monday first. Days before today can't be picked. */
+function Calendar({ value, onPick, onClose }) {
+  const today = isoDate(new Date())
+  const [month, setMonth] = useState(() => {
+    const d = value ? new Date(`${value}T00:00:00`) : new Date()
+    return new Date(d.getFullYear(), d.getMonth(), 1)
+  })
+  const lead = (month.getDay() + 6) % 7
+  const count = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate()
+  const cells = [...Array(lead).fill(null), ...Array.from({ length: count }, (_, i) => i + 1)]
+  while (cells.length % 7) cells.push(null)
+  const shift = (n) => setMonth(new Date(month.getFullYear(), month.getMonth() + n, 1))
+  const nav = 'grid size-9 shrink-0 place-items-center rounded-full border border-blush-200 bg-pearl text-rosegold'
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-1.5">
+      <div className="flex shrink-0 items-center gap-2">
+        <button onClick={() => shift(-1)} aria-label="Previous month" className={nav}>
+          <Icon d="M15 5l-7 7 7 7" />
+        </button>
+        <p className="flex-1 text-center font-serif text-[19px] italic">
+          {month.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
+        </p>
+        <button onClick={() => shift(1)} aria-label="Next month" className={nav}>
+          <Icon d="M9 5l7 7-7 7" />
+        </button>
+        <button onClick={onClose} aria-label="Back to keyboard" className={nav}>
+          <Icon d="M6 6l12 12M18 6L6 18" />
+        </button>
+      </div>
+      <div className="grid shrink-0 grid-cols-7 text-center text-[10px] font-medium tracking-[0.2em] text-plum-soft uppercase">
+        {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
+          <span key={i}>{d}</span>
         ))}
-        <div className={`flex gap-1.5 ${keyHeight}`}>
-          <Key wide onPress={() => setSymbols(!symbols)}>
-            <span className="text-[13px] font-medium tracking-[0.12em]">{symbols ? 'ABC' : '123'}</span>
-          </Key>
-          <Key grow="flex-[5]" onPress={() => type(' ')} label="Space">
-            <span className="text-[12px] font-medium tracking-[0.22em] text-plum-soft uppercase">space</span>
-          </Key>
-          <button
-            onClick={submit}
-            disabled={!canAdd}
-            className="flex flex-[2.5] items-center justify-center gap-2 rounded-xl bg-plum text-[13px] font-medium tracking-[0.2em] text-blush-100 uppercase disabled:opacity-40"
-          >
-            {status?.busy ? 'Adding' : 'Add'}
-            <Heart className="size-3.5 text-blush-300" />
-          </button>
-        </div>
+      </div>
+      <div className="grid min-h-0 flex-1 auto-rows-fr grid-cols-7 gap-1">
+        {cells.map((day, i) => {
+          if (!day) return <span key={i} />
+          const iso = isoDate(new Date(month.getFullYear(), month.getMonth(), day))
+          const selected = iso === value
+          return (
+            <button
+              key={i}
+              disabled={iso < today}
+              onClick={() => onPick(iso)}
+              className={`rounded-lg border text-[15px] tabular-nums disabled:border-transparent disabled:text-blush-300 ${
+                selected
+                  ? 'border-plum bg-plum text-blush-100'
+                  : iso === today
+                    ? 'border-rosegold bg-pearl text-rosegold-deep'
+                    : 'border-blush-200 bg-pearl text-plum'
+              }`}
+            >
+              {day}
+            </button>
+          )
+        })}
       </div>
     </div>
   )
@@ -661,7 +800,7 @@ function Chip({ active, narrow, onClick, children }) {
     <button
       onClick={onClick}
       className={`flex h-10 shrink-0 items-center justify-center gap-2 rounded-full border font-medium whitespace-nowrap uppercase ${
-        narrow ? 'px-1 text-[11px] tracking-[0.08em]' : 'px-3.5 text-[12px] tracking-[0.14em]'
+        narrow ? 'px-1 text-[11px] tracking-[0.05em]' : 'px-3.5 text-[12px] tracking-[0.14em]'
       } ${
         active ? 'border-plum bg-plum text-blush-100' : 'border-blush-200 bg-pearl text-plum-soft'
       }`}

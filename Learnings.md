@@ -87,6 +87,13 @@ CrowPanel 7.0" unless marked otherwise.
 - **RGB565 bands gradients.** Design with flat colours. The old dark radial
   gradient banded visibly.
 
+- **Screen timeout is panel-side, in YAML.** A `mode: restart` script restarted by
+  every touch turns the backlight off. Test "asleep" with
+  `backlight.remote_values` (the target state), so a tap during the fade-out
+  also counts as a wake. Swallow the whole waking gesture (down/move/up), or the
+  tap ticks the todo under the finger. The stream keeps running while the screen
+  is dark, so the screen is up to date as soon as it wakes.
+
 ## ESPHome / ESP-IDF build gotchas
 
 - `esp_crt_bundle.h` isn't on a custom component's include path, and the bundle
@@ -138,6 +145,10 @@ CrowPanel 7.0" unless marked otherwise.
   immediately and on every change. Items have `uid`, `summary`, `status`
   (`needs_action` / `completed`) and `due` (`YYYY-MM-DD` or ISO datetime). Tick
   with `todo.update_item` using `item: <uid>`, `status`.
+- **Editing:** `todo.update_item` takes `rename` and `due_date` (`null` clears
+  it). There is no way to move an item to another list, so the edit form keeps
+  the list fixed. Only send `due_date` if the user changed it, or an existing due
+  *time* is lost.
 - **Ingress requests come from `172.30.32.2`** and skip the display secret.
   Everything else needs `?key=`, `X-Display-Key` or the `td_key` cookie.
 - **First add-on build on the HA box takes 10+ minutes** (Chromium, image
