@@ -26,12 +26,15 @@ export function createHomeAssistantSource({ url, token, entities, log, onChange 
     const states = await request({ type: 'get_states' })
     let todoIds = states.map((s) => s.entity_id).filter((id) => id.startsWith('todo.'))
     if (entities.length) todoIds = entities.filter((id) => todoIds.includes(id))
-    const names = Object.fromEntries(states.map((s) => [s.entity_id, s.attributes?.friendly_name]))
+    const attrs = Object.fromEntries(states.map((s) => [s.entity_id, s.attributes ?? {}]))
 
     lists.clear()
     subscriptions.clear()
     for (const entityId of todoIds) {
-      lists.set(entityId, { name: names[entityId] || entityId, items: [] })
+      const { friendly_name: name, supported_features: features } = attrs[entityId]
+      // SET_DUE_DATE_ON_ITEM (16) | SET_DUE_DATETIME_ON_ITEM (32). The shopping list has neither.
+      const dueDates = features === undefined || (features & 48) !== 0
+      lists.set(entityId, { name: name || entityId, dueDates, items: [] })
       const id = nextId++
       subscriptions.set(id, entityId)
       pending.set(id, { resolve() {}, reject: (err) => log(`subscribe ${entityId} failed: ${err.message}`) })
@@ -87,7 +90,7 @@ export function createHomeAssistantSource({ url, token, entities, log, onChange 
 
   return {
     get lists() {
-      return [...lists].map(([entityId, list], index) => ({ id: entityId, name: list.name, index }))
+      return [...lists].map(([entityId, list], index) => ({ id: entityId, name: list.name, index, dueDates: list.dueDates }))
     },
     get todos() {
       return [...lists].flatMap(([entityId, list], listIndex) =>

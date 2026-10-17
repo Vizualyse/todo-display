@@ -22,7 +22,10 @@ one update is in flight per panel, and changes made meanwhile are coalesced.
 |---|---|
 | `repository.yaml` | Makes this repo installable as a Home Assistant add-on repository |
 | `todo_display/` | The add-on: `config.yaml`, `Dockerfile`, and the app |
-| `todo_display/app/src/` | React + Tailwind page (mock todo data for now) |
+| `todo_display/app/src/` | React + Tailwind page: `App.jsx` (tabs, layout per orientation) |
+| `todo_display/app/src/components/` | UI by area: `layout/`, `menu/`, `list/`, `form/` (keyboard, calendar), shared `ui/` |
+| `todo_display/app/src/hooks/`, `lib/` | Data and clock hooks, drag-scroll; date and todo helpers (no React) |
+| `todo_display/app/src/display/bridge.js` | Hooks the page up to the renderer (`__frameDirty`, `__scrollState`) |
 | `todo_display/app/server/` | Express server, Chromium renderer, tile streamer, `/preview` |
 | `esphome/components/tile_stream/` | Custom ESPHome display platform (RGB panel + WebSocket + JPEG) |
 | `esphome/crowpanel-todo.yaml` | Device config for the CrowPanel 7.0" |
@@ -42,7 +45,9 @@ HA_URL=http://homeassistant.local:8123 HA_TOKEN_FILE=../../.ha-token DISPLAY_SEC
 Inside the add-on, todos come from Home Assistant automatically (Supervisor API, no token needed).
 Tap the heart in the top right corner to switch between the list and the *Add a todo* tab, which has
 its own on-screen keyboard (a physical keyboard also works in a browser). Tap a todo's circle to tick
-it, or the rest of the card to edit its title and due date.
+it, or the rest of the card to edit its title and due date. The round filter button beside
+*To do / Done / All* picks which lists are shown (only *Married Life* by default). Lists without due
+date support, like the shopping list, get no date choice.
 
 - `http://localhost:8099/` — the page as a normal web page
 - `http://localhost:8099/preview` — a browser stand-in for the panel: same protocol, click to "touch",

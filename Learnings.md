@@ -129,6 +129,11 @@ CrowPanel 7.0" unless marked otherwise.
   `1fr` column grows to its min-content width (nowrap chips, long titles), the
   `overflow-hidden` shell then gets scrolled sideways by clicks, and the whole
   frame shifts. Check both orientations with screenshots after layout changes.
+- **Verify page refactors by pixel diff.** Screenshot every UI state in all three
+  orientations before and after with Playwright, `page.clock.setFixedTime()` so the
+  clock doesn't move, and the mock source; compare raw RGBA. A pure refactor must
+  give 0 differing bytes. Keep a stateful child mounted and `hidden` (not
+  unmounted) when swapping it out, or its state resets.
 - **Fonts:** self-hosted via `@fontsource` (Playfair Display, Jost, Great Vibes).
   The add-on has no internet dependency at render time.
 
@@ -149,8 +154,15 @@ CrowPanel 7.0" unless marked otherwise.
   it). There is no way to move an item to another list, so the edit form keeps
   the list fixed. Only send `due_date` if the user changed it, or an existing due
   *time* is lost.
+- **Not every todo list takes due dates.** The shopping list doesn't. Check the
+  entity's `supported_features`: `SET_DUE_DATE_ON_ITEM` (16) or
+  `SET_DUE_DATETIME_ON_ITEM` (32). The server exposes it as `dueDates` on
+  `/api/lists`, and the form hides the date row when it's false.
 - **Ingress requests come from `172.30.32.2`** and skip the display secret.
   Everything else needs `?key=`, `X-Display-Key` or the `td_key` cookie.
+- **Ingress panels are admin-only by default.** `panel_admin: false` in
+  `config.yaml` shows the sidebar panel to non-admins. There are no per-user
+  permissions: anyone who sees the panel can edit todos with the add-on's token.
 - **First add-on build on the HA box takes 10+ minutes** (Chromium, image
   ~1.4GB). The image is `node:22-bookworm-slim` + Debian `chromium`.
 

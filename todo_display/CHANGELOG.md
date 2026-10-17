@@ -3,6 +3,20 @@
 Bump `version` in `config.yaml` with every change: Home Assistant only rebuilds
 the add-on when the version changes.
 
+## 0.5.1
+
+- Page split from one `App.jsx` into components, hooks and helpers under
+  `src/`. No visible change: every screen renders pixel-identical in all three
+  orientations.
+- The ToDo sidebar panel is visible to non-admin users (`panel_admin: false`).
+  They get full access: the add-on acts with its own token, not theirs.
+- List filter: a round button beside To do / Done / All picks which todo lists
+  are shown (list, counts and summary). Only *Married Life* is ticked by
+  default (every list if there is none by that name); the choice is remembered
+  per browser. *Add a todo* starts on the first ticked list.
+- Lists that can't hold due dates (HA's shopping list, read from the entity's
+  `supported_features`) get no date choice when adding or editing.
+
 ## 0.5.0
 
 - Tap a card to edit its title and due date (the circle still ticks it). The
