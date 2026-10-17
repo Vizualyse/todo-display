@@ -23,12 +23,27 @@ function formatDue(due, now) {
   return { label: date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }), overdue }
 }
 
-/** Time until the deadline; a date-only due runs to the end of that day. */
-function timeLeft(due, now) {
-  if (!due) return null
+/** A date-only due runs to the end of that day. */
+function deadlineOf(due) {
   const deadline = parseDue(due)
   if (isDateOnly(due)) deadline.setDate(deadline.getDate() + 1)
-  const ms = deadline - now
+  return deadline
+}
+
+/**
+ * Soonest deadline first (overdue at the top, as the most urgent), then undated
+ * items, then done ones. The sort is stable, so ties keep Home Assistant's order.
+ */
+function byUpcoming(a, b) {
+  if (a.done !== b.done) return a.done ? 1 : -1
+  if (!a.due || !b.due) return !a.due - !b.due
+  return deadlineOf(a.due) - deadlineOf(b.due)
+}
+
+/** Time until the deadline. */
+function timeLeft(due, now) {
+  if (!due) return null
+  const ms = deadlineOf(due) - now
   const overdue = ms <= 0
   // Round towards the deadline, so "0m" never shows while there is time left.
   const mins = overdue ? Math.floor(-ms / 60_000) : Math.ceil(ms / 60_000)
@@ -136,7 +151,7 @@ export default function App() {
     setFilter(f)
     setTab('list')
   }
-  const visible = todos.filter(FILTERS.find((f) => f.id === filter).test)
+  const visible = todos.filter(FILTERS.find((f) => f.id === filter).test).sort(byUpcoming)
   const header = <Header now={now} clearMenu={orientation !== 'landscape'} />
   const summary = <Summary todos={todos} />
   const filters = <Filters value={tab === 'list' ? filter : null} onChange={showList} todos={todos} />

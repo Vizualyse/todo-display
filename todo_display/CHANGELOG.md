@@ -3,6 +3,11 @@
 Bump `version` in `config.yaml` with every change: Home Assistant only rebuilds
 the add-on when the version changes.
 
+## 0.4.1
+
+- List is ordered upcoming first: soonest deadline at the top (overdue first),
+  then undated items, then done ones.
+
 ## 0.4.0
 
 - Heart menu button in the top right corner opens a popover to switch tabs.
