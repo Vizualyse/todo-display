@@ -33,8 +33,13 @@ one update is in flight per panel, and changes made meanwhile are coalesced.
 cd todo_display/app
 npm install
 npm run build
-DISPLAY_SECRET=dev-secret npm start      # uses Edge/Chrome on Windows, CHROMIUM_PATH elsewhere
+DISPLAY_SECRET=dev-secret npm start      # mock todos; Edge/Chrome on Windows, CHROMIUM_PATH elsewhere
+
+# real data: long-lived token from your HA profile -> Security, saved in .ha-token (gitignored)
+HA_URL=http://homeassistant.local:8123 HA_TOKEN_FILE=../../.ha-token DISPLAY_SECRET=dev-secret npm start
 ```
+
+Inside the add-on, todos come from Home Assistant automatically (Supervisor API, no token needed).
 
 - `http://localhost:8099/` — the page as a normal web page
 - `http://localhost:8099/preview` — a browser stand-in for the panel: same protocol, click to "touch",
@@ -52,6 +57,7 @@ DISPLAY_SECRET=dev-secret npm start      # uses Edge/Chrome on Windows, CHROMIUM
 | Option | Default | |
 |---|---|---|
 | `display_secret` | `change-me` | Required by the panel (`?key=`) and by any non-ingress browser |
+| `todo_entities` | `[]` | Todo lists to show, in order (e.g. `todo.shopping_list`); empty shows all |
 | `orientation` | `portrait` | `portrait` or `landscape` |
 | `rotation` | `90` | `90` or `270`: which way the panel is mounted in portrait |
 | `jpeg_quality` | `80` | Tile quality; lower is smaller and faster to decode |
