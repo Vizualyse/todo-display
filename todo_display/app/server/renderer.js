@@ -1,0 +1,78 @@
+import { chromium } from 'playwright-core'
+import sharp from 'sharp'
+
+export const WIDTH = 800
+export const HEIGHT = 480
+
+/**
+ * Keeps one headless page open on the display URL and captures raw RGBA pixels
+ * whenever the page reports a painted DOM change. Subscribers get every new frame.
+ */
+export async function createRenderer({ url, executablePath, channel, log }) {
+  const browser = await chromium.launch({
+    executablePath,
+    channel,
+    headless: true,
+    args: ['--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage', '--font-render-hinting=none'],
+  })
+  const page = await browser.newPage({ viewport: { width: WIDTH, height: HEIGHT }, deviceScaleFactor: 1 })
+  const cdp = await page.context().newCDPSession(page)
+
+  let frame = null // { raw: Buffer (RGBA), version, capturedAt }
+  let capturing = false
+  let again = false
+  const listeners = new Set()
+
+  async function capture() {
+    if (capturing) {
+      again = true
+      return
+    }
+    capturing = true
+    try {
+      do {
+        again = false
+        const started = performance.now()
+        const { data } = await cdp.send('Page.captureScreenshot', { format: 'png', optimizeForSpeed: true })
+        const raw = await sharp(Buffer.from(data, 'base64')).ensureAlpha().raw().toBuffer()
+        if (!frame || !raw.equals(frame.raw)) {
+          frame = { raw, version: (frame?.version ?? 0) + 1, capturedAt: performance.now() }
+          log(`frame v${frame.version} captured in ${(performance.now() - started).toFixed(0)}ms`)
+          for (const fn of listeners) fn(frame)
+        }
+      } while (again)
+    } catch (err) {
+      log(`capture failed: ${err.message}`)
+    } finally {
+      capturing = false
+    }
+  }
+
+  await page.exposeFunction('__frameDirty', () => void capture())
+  page.on('crash', () => {
+    log('page crashed, reloading')
+    page.reload().catch(() => {})
+  })
+  await page.goto(url, { waitUntil: 'networkidle' })
+  await capture()
+  // Safety net for changes the MutationObserver can't see (e.g. canvas).
+  const safety = setInterval(capture, 60_000)
+
+  return {
+    get frame() {
+      return frame
+    },
+    onFrame(fn) {
+      listeners.add(fn)
+      return () => listeners.delete(fn)
+    },
+    /** Replay a panel touch as a real click; the resulting frame arrives via onFrame. */
+    async tap(x, y) {
+      await page.mouse.click(x, y)
+    },
+    async close() {
+      clearInterval(safety)
+      await browser.close()
+    },
+  }
+}

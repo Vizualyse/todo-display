@@ -1,0 +1,159 @@
+import crypto from 'node:crypto'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import express from 'express'
+import sharp from 'sharp'
+import { createRenderer, HEIGHT, WIDTH } from './renderer.js'
+import { attachTileStream } from './stream.js'
+
+const log = (msg) => console.log(`[todo] ${msg}`)
+const serverDir = path.dirname(fileURLToPath(import.meta.url))
+const distDir = path.join(serverDir, '..', 'dist')
+
+function loadConfig() {
+  let opts = {}
+  try {
+    // Home Assistant add-on options.
+    opts = JSON.parse(fs.readFileSync('/data/options.json', 'utf8'))
+  } catch {}
+  const env = process.env
+  return {
+    port: Number(env.PORT || 8099),
+    secret: String(opts.display_secret || env.DISPLAY_SECRET || 'dev-secret'),
+    orientation: opts.orientation || env.ORIENTATION || 'portrait',
+    rotation: Number(opts.rotation || env.ROTATION || 90),
+    quality: Number(opts.jpeg_quality || env.JPEG_QUALITY || 80),
+    executablePath: env.CHROMIUM_PATH || undefined,
+    channel: env.CHROMIUM_PATH ? undefined : env.BROWSER_CHANNEL || (process.platform === 'win32' ? 'msedge' : undefined),
+  }
+}
+
+const config = loadConfig()
+if (config.secret === 'change-me' || config.secret === 'dev-secret') {
+  log('WARNING: display_secret is still the default, set a real one in the add-on options')
+}
+
+// --- Mock todo store -------------------------------------------------------
+
+let todos = [
+  { id: 1, title: 'Take the bins out', list: 'Home', due: 'Tonight', done: false, priority: true },
+  { id: 2, title: 'Book dentist appointment', list: 'Errands', due: 'Today', done: false },
+  { id: 3, title: 'Water the plants', list: 'Home', due: 'Today', done: true },
+  { id: 4, title: 'Review Q4 roadmap', list: 'Work', due: 'Mon', done: false },
+  { id: 5, title: 'Pick up parcel from the post office', list: 'Errands', due: 'Today', done: false },
+  { id: 6, title: 'Renew car insurance', list: 'Errands', due: 'Fri', done: false, priority: true },
+  { id: 7, title: 'Call Mum', list: 'Home', due: 'Sun', done: true },
+  { id: 8, title: 'Descale the coffee machine', list: 'Home', due: 'Sat', done: false },
+]
+
+const subscribers = new Set()
+const broadcast = () => {
+  for (const res of subscribers) res.write('data: changed\n\n')
+}
+
+// --- Auth ------------------------------------------------------------------
+
+// Loopback is the headless renderer; 172.30.32.2 is the Supervisor's ingress proxy.
+const TRUSTED = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1', '172.30.32.2', '::ffff:172.30.32.2'])
+
+function keyMatches(candidate) {
+  if (!candidate) return false
+  const a = Buffer.from(String(candidate))
+  const b = Buffer.from(config.secret)
+  return a.length === b.length && crypto.timingSafeEqual(a, b)
+}
+
+function readCookie(req, name) {
+  const match = (req.headers.cookie || '').match(new RegExp(`(?:^|;\\s*)${name}=([^;]*)`))
+  return match ? decodeURIComponent(match[1]) : undefined
+}
+
+function isAuthorized(req) {
+  if (TRUSTED.has(req.socket.remoteAddress)) return true
+  const key = new URL(req.url, 'http://x').searchParams.get('key')
+  return keyMatches(key) || keyMatches(req.headers['x-display-key']) || keyMatches(readCookie(req, 'td_key'))
+}
+
+function auth(req, res, next) {
+  if (!isAuthorized(req)) return res.status(401).type('text').send('unauthorized')
+  if (keyMatches(req.query.key)) {
+    // Remember the key so the page's own fetches don't need it in every URL.
+    res.setHeader(
+      'Set-Cookie',
+      `td_key=${encodeURIComponent(req.query.key)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000`,
+    )
+  }
+  next()
+}
+
+// --- HTTP ------------------------------------------------------------------
+
+const app = express()
+app.disable('x-powered-by')
+app.use(auth)
+
+app.get('/api/todos', (req, res) => res.json(todos))
+
+app.post('/api/todos/:id/toggle', (req, res) => {
+  const id = Number(req.params.id)
+  todos = todos.map((t) => (t.id === id ? { ...t, done: !t.done } : t))
+  broadcast()
+  res.json(todos.find((t) => t.id === id) ?? null)
+})
+
+app.get('/api/events', (req, res) => {
+  res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' })
+  res.flushHeaders()
+  res.write(': connected\n\n')
+  subscribers.add(res)
+  req.on('close', () => subscribers.delete(res))
+})
+setInterval(() => {
+  for (const res of subscribers) res.write(': ping\n\n')
+}, 25_000)
+
+let renderer = null
+
+// Current panel frame as a single JPEG, handy for debugging.
+app.get('/frame.jpg', async (req, res) => {
+  const frame = renderer?.frame
+  if (!frame) return res.status(503).type('text').send('renderer starting')
+  const jpeg = await sharp(frame.raw, { raw: { width: WIDTH, height: HEIGHT, channels: 4 } })
+    .removeAlpha()
+    .jpeg({ quality: config.quality, chromaSubsampling: '4:4:4' })
+    .toBuffer()
+  res.set('Cache-Control', 'no-store').type('image/jpeg').send(jpeg)
+})
+
+// Browser stand-in for the panel: speaks the same tile protocol over the same socket.
+app.get('/preview', (req, res) => res.sendFile(path.join(serverDir, 'preview.html')))
+
+app.use(express.static(distDir))
+
+const server = app.listen(config.port, async () => {
+  log(`listening on :${config.port} (${config.orientation}${config.orientation === 'portrait' ? `, rotated ${config.rotation}°` : ''})`)
+  const displayUrl =
+    `http://127.0.0.1:${config.port}/?display=1&orientation=${config.orientation}` +
+    `&rotate=${config.rotation === 270 ? 270 : 90}`
+  try {
+    renderer = await createRenderer({
+      url: displayUrl,
+      executablePath: config.executablePath,
+      channel: config.channel,
+      log,
+    })
+    attachTileStream({ server, renderer, isAuthorized, quality: config.quality, log })
+    log('renderer ready')
+  } catch (err) {
+    log(`renderer failed to start: ${err.message}`)
+    process.exit(1)
+  }
+})
+
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, async () => {
+    await renderer?.close().catch(() => {})
+    process.exit(0)
+  })
+}

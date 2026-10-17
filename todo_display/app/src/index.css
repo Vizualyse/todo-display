@@ -1,0 +1,42 @@
+@import "tailwindcss";
+@import "@fontsource-variable/playfair-display";
+@import "@fontsource-variable/playfair-display/wght-italic.css";
+@import "@fontsource-variable/jost";
+@import "@fontsource/great-vibes";
+
+@theme {
+  --font-sans: "Jost Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Playfair Display Variable", ui-serif, Georgia, serif;
+  --font-script: "Great Vibes", cursive;
+
+  /* Flat tones only: the panel is RGB565, so wide gradients band. */
+  --color-blush-50: #fbf3f1;
+  --color-blush-100: #f6e4e0;
+  --color-blush-200: #eed0ca;
+  --color-blush-300: #e2b2a9;
+  --color-rosegold: #b9786e;
+  --color-rosegold-deep: #9c5a52;
+  --color-champagne: #c9a46c;
+  --color-plum: #4a1e2c;
+  --color-plum-soft: #8a5f69;
+  --color-pearl: #fffcfb;
+}
+
+html, body, #root { height: 100%; }
+body { background: var(--color-blush-50); }
+
+/* Display mode: the page is rasterised by headless Chromium at the panel's
+   native 800x480. No transitions, so one screenshot after a DOM change is final. */
+html.display, html.display body { width: 800px; height: 480px; overflow: hidden; cursor: none; }
+html.display *, html.display *::before, html.display *::after {
+  transition: none !important;
+  animation: none !important;
+}
+html.display #root { position: absolute; top: 0; left: 0; }
+html.display.landscape #root { width: 800px; height: 480px; }
+
+/* Portrait: lay out at 480x800, then rotate into the 800x480 framebuffer.
+   Chromium hit-tests through the transform, so raw panel touch coords just work. */
+html.display.rot-90 #root, html.display.rot-270 #root { width: 480px; height: 800px; transform-origin: 0 0; }
+html.display.rot-90 #root { transform: rotate(90deg) translateY(-100%); }
+html.display.rot-270 #root { transform: rotate(-90deg) translateX(-100%); }

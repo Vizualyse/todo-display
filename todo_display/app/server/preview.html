@@ -1,0 +1,77 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Panel preview</title>
+<style>
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #111; color: #aaa; font: 14px system-ui; }
+  canvas { width: 800px; height: 480px; border: 12px solid #000; border-radius: 14px; cursor: crosshair; display: block; }
+  .bar { display: flex; justify-content: space-between; gap: 16px; margin-top: 10px; }
+  label { user-select: none; }
+</style>
+<div>
+  <canvas id="c" width="800" height="480"></canvas>
+  <div class="bar">
+    <span id="s">connecting…</span>
+    <label><input id="outline" type="checkbox" /> outline tiles</label>
+  </div>
+</div>
+<script>
+  // Mirrors what the ESP32 component does: decode tiles, draw, ack, send touches.
+  const canvas = document.getElementById('c')
+  const ctx = canvas.getContext('2d')
+  const status = document.getElementById('s')
+  const outline = document.getElementById('outline')
+  let ws
+  let touchAt = 0
+
+  function connect() {
+    const url = new URL('ws', location.href)
+    url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
+    ws = new WebSocket(url)
+    ws.binaryType = 'arraybuffer'
+    ws.onopen = () => ws.send('hello')
+    ws.onclose = () => {
+      status.textContent = 'disconnected, retrying…'
+      setTimeout(connect, 1000)
+    }
+    ws.onmessage = async (e) => {
+      const view = new DataView(e.data)
+      const count = view.getUint16(2, true)
+      const version = view.getUint32(4, true)
+      let offset = 8
+      const tiles = []
+      for (let i = 0; i < count; i++) {
+        const x = view.getUint16(offset, true)
+        const y = view.getUint16(offset + 2, true)
+        const w = view.getUint16(offset + 4, true)
+        const h = view.getUint16(offset + 6, true)
+        const len = view.getUint32(offset + 8, true)
+        offset += 12
+        tiles.push({ x, y, w, h, len, bitmap: createImageBitmap(new Blob([e.data.slice(offset, offset + len)], { type: 'image/jpeg' })) })
+        offset += len
+      }
+      for (const t of tiles) {
+        ctx.drawImage(await t.bitmap, t.x, t.y)
+        if (outline.checked) {
+          ctx.strokeStyle = '#f0f'
+          ctx.strokeRect(t.x + 0.5, t.y + 0.5, t.w - 1, t.h - 1)
+        }
+      }
+      ws.send(`ack ${version}`)
+      const kb = (e.data.byteLength / 1024).toFixed(1)
+      const lat = touchAt ? ` · touch→pixels ${Math.round(performance.now() - touchAt)}ms` : ''
+      touchAt = 0
+      status.textContent = `v${version}: ${count} tile(s), ${kb}KB${lat}`
+    }
+  }
+
+  canvas.onclick = (e) => {
+    const r = canvas.getBoundingClientRect()
+    const b = 12
+    const x = Math.round(((e.clientX - r.left - b) * 800) / (r.width - 2 * b))
+    const y = Math.round(((e.clientY - r.top - b) * 480) / (r.height - 2 * b))
+    touchAt = performance.now()
+    ws.send(`t ${x} ${y}`)
+  }
+
+  connect()
+</script>
