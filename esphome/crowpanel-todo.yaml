@@ -10,6 +10,8 @@ substitutions:
   stream_url: "ws://192.168.8.173:8099/ws?key=${display_key}"
   # Through the public hostname instead (TLS, adds a little latency, works off-LAN):
   # stream_url: "wss://todo.vizualyse.uk/ws?key=${display_key}"
+  # Backlight turns off after this long without a touch; a tap wakes it.
+  screen_timeout: 30s
 
 esphome:
   name: ${name}
@@ -18,6 +20,8 @@ esphome:
     - usb_disable.h
   platformio_options:
     board_build.flash_mode: dio
+  on_boot:
+    - script.execute: screen_idle
 
 esp32:
   board: esp32-s3-devkitc-1
@@ -85,14 +89,41 @@ touchscreen:
     # Some units strap to 0x14 instead; try that if touch stays silent.
     address: 0x5D
     update_interval: 50ms
+    # A touch while the screen is off only wakes it: the whole gesture is swallowed,
+    # so the waking tap can't tick whatever todo is under the finger.
     on_touch:
-      - lambda: id(panel).touch_down(touch.x, touch.y);
+      - if:
+          condition:
+            lambda: return !id(backlight).remote_values.is_on();
+          then:
+            - globals.set: { id: swallow_touch, value: "true" }
+            - light.turn_on: { id: backlight, transition_length: 0s }
+          else:
+            - lambda: id(panel).touch_down(touch.x, touch.y);
+      - script.execute: screen_idle
     on_update:
       - lambda: |-
-          if (!touches.empty())
+          if (!id(swallow_touch) && !touches.empty())
             id(panel).touch_move(touches[0].x, touches[0].y);
+      - script.execute: screen_idle
     on_release:
-      - lambda: id(panel).touch_up();
+      - lambda: |-
+          if (id(swallow_touch)) id(swallow_touch) = false;
+          else id(panel).touch_up();
+      - script.execute: screen_idle
+
+globals:
+  - id: swallow_touch
+    type: bool
+    initial_value: "false"
+
+script:
+  # Restarted by every touch; turns the backlight off once it runs out.
+  - id: screen_idle
+    mode: restart
+    then:
+      - delay: ${screen_timeout}
+      - light.turn_off: { id: backlight, transition_length: 1s }
 
 output:
   - platform: ledc
