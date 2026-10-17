@@ -8,6 +8,7 @@
 
 #include <esp_heap_caps.h>
 #include <esp_idf_version.h>
+#include <lwip/sockets.h>
 
 #include <algorithm>
 #include <cstring>
@@ -26,6 +27,16 @@ static constexpr uint8_t WS_OPCODE_CONTINUATION = 0x0;
 static constexpr uint8_t WS_OPCODE_BINARY = 0x2;
 static constexpr size_t HEADER_LEN = 8;
 static constexpr size_t TILE_HEADER_LEN = 12;
+static constexpr uint32_t COPY_MARKER = 0xFFFFFFFF;
+
+// esp_websocket_client has no TCP_NODELAY option, and without it Nagle holds each
+// tiny "ack" / touch message until the server's delayed ACK (up to 200ms on Windows).
+// Set it on every open TCP socket; harmless for the API/OTA sockets too.
+static void disable_nagle_on_all_sockets() {
+  const int nodelay = 1;
+  for (int fd = LWIP_SOCKET_OFFSET; fd < LWIP_SOCKET_OFFSET + CONFIG_LWIP_MAX_SOCKETS; fd++)
+    lwip_setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
+}
 
 static uint16_t read_u16(const uint8_t *p) { return p[0] | (p[1] << 8); }
 static uint32_t read_u32(const uint8_t *p) { return p[0] | (p[1] << 8) | (p[2] << 16) | (uint32_t(p[3]) << 24); }
@@ -83,7 +94,18 @@ void TileStreamDisplay::loop() {
 
   if (this->ws_just_connected_.exchange(false)) {
     ESP_LOGI(TAG, "Stream connected");
-    this->send_text_("hello");
+    // Copy ops write the framebuffer directly, which is only cache-coherent with
+    // the panel when bounce buffers feed it; otherwise ask for plain tiles.
+    this->send_text_(this->bounce_lines_ > 0 ? "hello 2" : "hello");
+  }
+
+  // Spin the main loop at full speed while someone is interacting, so updates are
+  // drawn and acked immediately instead of on the next ~16ms loop pass.
+  static constexpr uint32_t INTERACTIVE_MS = 1500;
+  if (this->touching_ || millis() - this->last_touch_ms_ < INTERACTIVE_MS) {
+    this->high_freq_.start();
+  } else {
+    this->high_freq_.stop();
   }
 
   Update update;
@@ -147,6 +169,7 @@ void TileStreamDisplay::touch_up() {
   if (!this->touching_)
     return;
   this->touching_ = false;
+  this->last_touch_ms_ = millis();
   this->send_text_("u");
 }
 
@@ -155,6 +178,7 @@ void TileStreamDisplay::on_ws_event_(void *arg, esp_event_base_t base, int32_t e
   auto *self = static_cast<TileStreamDisplay *>(arg);
   switch (event_id) {
     case WEBSOCKET_EVENT_CONNECTED:
+      disable_nagle_on_all_sockets();
       self->ws_connected_ = true;
       self->ws_just_connected_ = true;
       break;
@@ -224,8 +248,17 @@ void TileStreamDisplay::apply_update_(const Update &update) {
       break;
     const uint16_t x = read_u16(data + offset);
     const uint16_t y = read_u16(data + offset + 2);
+    const uint16_t w = read_u16(data + offset + 4);
+    const uint16_t h = read_u16(data + offset + 6);
     const uint32_t len = read_u32(data + offset + 8);
     offset += TILE_HEADER_LEN;
+    if (len == COPY_MARKER) {
+      if (offset + 4 > update.len)
+        break;
+      this->copy_rect_(read_u16(data + offset), read_u16(data + offset + 2), x, y, w, h);
+      offset += 4;
+      continue;
+    }
     if (offset + len > update.len)
       break;
 
@@ -246,6 +279,26 @@ void TileStreamDisplay::apply_update_(const Update &update) {
   char ack[24];
   snprintf(ack, sizeof(ack), "ack %u", (unsigned) version);
   this->send_text_(ack);
+}
+
+// Scrolling: move pixels the panel already shows instead of decoding them again.
+void TileStreamDisplay::copy_rect_(int src_x, int src_y, int dst_x, int dst_y, int w, int h) {
+  if (w <= 0 || h <= 0 || src_x < 0 || src_y < 0 || dst_x < 0 || dst_y < 0 || src_x + w > this->width_ ||
+      dst_x + w > this->width_ || src_y + h > this->height_ || dst_y + h > this->height_)
+    return;
+  void *fb = nullptr;
+  if (esp_lcd_rgb_panel_get_frame_buffer(this->panel_, 1, &fb) != ESP_OK || fb == nullptr)
+    return;
+  auto *pixels = static_cast<uint16_t *>(fb);
+  const size_t row_bytes = w * sizeof(uint16_t);
+  // Walk rows away from the overlap so every source row is read before it's overwritten.
+  if (dst_y > src_y) {
+    for (int row = h - 1; row >= 0; row--)
+      memmove(pixels + (dst_y + row) * this->width_ + dst_x, pixels + (src_y + row) * this->width_ + src_x, row_bytes);
+  } else {
+    for (int row = 0; row < h; row++)
+      memmove(pixels + (dst_y + row) * this->width_ + dst_x, pixels + (src_y + row) * this->width_ + src_x, row_bytes);
+  }
 }
 
 int TileStreamDisplay::on_jpeg_draw_(JPEGDRAW *draw) {

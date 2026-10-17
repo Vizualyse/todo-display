@@ -21,8 +21,15 @@ export async function createRenderer({ url, executablePath, channel, log }) {
   let frame = null // { raw: Buffer (RGBA), version, capturedAt }
   let capturing = false
   let again = false
-  let input = Promise.resolve()
+  let queue = Promise.resolve()
   const listeners = new Set()
+
+  /** Run fn after everything queued before it; input and captures never interleave. */
+  function exclusive(fn) {
+    const run = queue.then(fn)
+    queue = run.catch(() => {})
+    return run
+  }
 
   async function capture() {
     if (capturing) {
@@ -34,10 +41,17 @@ export async function createRenderer({ url, executablePath, channel, log }) {
       do {
         again = false
         const started = performance.now()
-        const { data } = await cdp.send('Page.captureScreenshot', { format: 'png', optimizeForSpeed: true })
+        // Scroll state is read with the pixels so the streamer can turn scrolling into a
+        // copy. Both happen inside the input queue so no drag step lands in between.
+        const [scroll, { data }] = await exclusive(() =>
+          Promise.all([
+            page.evaluate(() => window.__scrollState?.() ?? null),
+            cdp.send('Page.captureScreenshot', { format: 'png', optimizeForSpeed: true }),
+          ]),
+        )
         const raw = await sharp(Buffer.from(data, 'base64')).ensureAlpha().raw().toBuffer()
         if (!frame || !raw.equals(frame.raw)) {
-          frame = { raw, version: (frame?.version ?? 0) + 1, capturedAt: performance.now() }
+          frame = { raw, scroll, version: (frame?.version ?? 0) + 1, capturedAt: performance.now() }
           log(`frame v${frame.version} captured in ${(performance.now() - started).toFixed(0)}ms`)
           for (const fn of listeners) fn(frame)
         }
@@ -72,14 +86,12 @@ export async function createRenderer({ url, executablePath, channel, log }) {
      * resulting frames arrive via onFrame. kind: 'tap' | 'down' | 'move' | 'up'.
      */
     pointer(kind, x, y) {
-      input = input
-        .then(() => {
-          if (kind === 'tap') return page.mouse.click(x, y)
-          if (kind === 'down') return page.mouse.move(x, y).then(() => page.mouse.down())
-          if (kind === 'move') return page.mouse.move(x, y)
-          if (kind === 'up') return page.mouse.up()
-        })
-        .catch((err) => log(`input ${kind} failed: ${err.message}`))
+      exclusive(() => {
+        if (kind === 'tap') return page.mouse.click(x, y)
+        if (kind === 'down') return page.mouse.move(x, y).then(() => page.mouse.down())
+        if (kind === 'move') return page.mouse.move(x, y)
+        if (kind === 'up') return page.mouse.up()
+      }).catch((err) => log(`input ${kind} failed: ${err.message}`))
     },
     async close() {
       clearInterval(safety)

@@ -4,6 +4,7 @@
 
 #include "esphome/components/display/display.h"
 #include "esphome/core/component.h"
+#include "esphome/core/helpers.h"
 
 #include <esp_lcd_panel_ops.h>
 #include <esp_lcd_panel_rgb.h>
@@ -82,6 +83,7 @@ class TileStreamDisplay : public display::Display {
   void start_stream_();
   void send_text_(const char *text);
   void apply_update_(const Update &update);
+  void copy_rect_(int src_x, int src_y, int dst_x, int dst_y, int w, int h);
   void on_ws_data_(const esp_websocket_event_data_t *event);
   void drop_partial_();
   static void on_ws_event_(void *arg, esp_event_base_t base, int32_t event_id, void *event_data);
@@ -110,6 +112,8 @@ class TileStreamDisplay : public display::Display {
   size_t rx_len_{0};
 
   bool touching_{false};
+  uint32_t last_touch_ms_{0};
+  HighFrequencyLoopRequester high_freq_;
   int last_touch_x_{0};
   int last_touch_y_{0};
 };

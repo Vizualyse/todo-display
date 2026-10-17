@@ -249,7 +249,8 @@ function useDragScroll() {
       if (!start || !(e.buttons & 1)) return
       const delta = alongList(e.clientX - start.x, e.clientY - start.y)
       if (Math.abs(delta) > 12) dragged = true
-      if (dragged) el.scrollTop = start.top - delta
+      // Whole pixels, so the panel can shift what it already shows exactly.
+      if (dragged) el.scrollTop = Math.round(start.top - delta)
     }
     const onUp = () => {
       start = null
@@ -290,6 +291,7 @@ function ScrollingList({ todos, onToggle, now }) {
   return (
     <ul
       ref={ref}
+      data-scroll
       className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto pb-8 [mask-image:linear-gradient(to_bottom,black_92%,transparent)] [scrollbar-width:none]"
     >
       {todos.map((t) => (

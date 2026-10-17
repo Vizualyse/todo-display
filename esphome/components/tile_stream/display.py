@@ -101,5 +101,14 @@ async def to_code(config):
     if config[CONF_URL].startswith("wss://"):
         add_idf_sdkconfig_option("CONFIG_MBEDTLS_CERTIFICATE_BUNDLE", True)
         add_idf_sdkconfig_option("CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL", True)
+    # The stream is bursty (whole updates at once): a bigger TCP window and more
+    # Wi-Fi RX buffers / aggregation let a 20-40KB update arrive without stalling
+    # on ACK round trips. Buffers go to PSRAM where possible.
+    add_idf_sdkconfig_option("CONFIG_LWIP_TCP_WND_DEFAULT", 32768)
+    add_idf_sdkconfig_option("CONFIG_LWIP_TCP_RECVMBOX_SIZE", 32)
+    add_idf_sdkconfig_option("CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM", 16)
+    add_idf_sdkconfig_option("CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM", 64)
+    add_idf_sdkconfig_option("CONFIG_ESP_WIFI_RX_BA_WIN", 16)
+    add_idf_sdkconfig_option("CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP", True)
     # Restart RGB DMA on vsync so a PSRAM bandwidth hiccup can't leave the image shifted.
     add_idf_sdkconfig_option("CONFIG_LCD_RGB_RESTART_IN_VSYNC", True)

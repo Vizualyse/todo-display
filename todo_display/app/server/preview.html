@@ -28,7 +28,7 @@
     url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
     ws = new WebSocket(url)
     ws.binaryType = 'arraybuffer'
-    ws.onopen = () => ws.send('hello')
+    ws.onopen = () => ws.send('hello 2')
     ws.onclose = () => {
       status.textContent = 'disconnected, retrying…'
       setTimeout(connect, 1000)
@@ -46,10 +46,19 @@
         const h = view.getUint16(offset + 6, true)
         const len = view.getUint32(offset + 8, true)
         offset += 12
+        if (len === 0xffffffff) {
+          tiles.push({ x, y, w, h, srcX: view.getUint16(offset, true), srcY: view.getUint16(offset + 2, true) })
+          offset += 4
+          continue
+        }
         tiles.push({ x, y, w, h, len, bitmap: createImageBitmap(new Blob([e.data.slice(offset, offset + len)], { type: 'image/jpeg' })) })
         offset += len
       }
       for (const t of tiles) {
+        if (t.srcX !== undefined) {
+          ctx.drawImage(canvas, t.srcX, t.srcY, t.w, t.h, t.x, t.y, t.w, t.h)
+          continue
+        }
         ctx.drawImage(await t.bitmap, t.x, t.y)
         if (outline.checked) {
           ctx.strokeStyle = '#f0f'
@@ -60,7 +69,8 @@
       const kb = (e.data.byteLength / 1024).toFixed(1)
       const lat = touchAt ? ` · touch→pixels ${Math.round(performance.now() - touchAt)}ms` : ''
       touchAt = 0
-      status.textContent = `v${version}: ${count} tile(s), ${kb}KB${lat}`
+      const copied = tiles.some((t) => t.srcX !== undefined) ? ' (scroll copy)' : ''
+      status.textContent = `v${version}: ${count} op(s)${copied}, ${kb}KB${lat}`
     }
   }
 

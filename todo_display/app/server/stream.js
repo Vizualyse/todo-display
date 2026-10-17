@@ -7,10 +7,14 @@ import { HEIGHT, WIDTH } from './renderer.js'
  *
  * Server -> panel, one binary message per update:
  *   u8 'T' | u8 flags (bit0 = full frame) | u16 tile count | u32 frame version
- *   per tile: u16 x | u16 y | u16 w | u16 h | u32 jpeg length | baseline JPEG bytes
+ *   per op:   u16 x | u16 y | u16 w | u16 h | u32 length, then either
+ *     length != 0xFFFFFFFF: that many bytes of baseline JPEG, drawn at x,y
+ *     length == 0xFFFFFFFF: u16 src_x | u16 src_y; copy the w*h pixels the panel
+ *                           already shows at src to x,y (used for scrolling)
+ *   Ops apply in order; a copy always comes first.
  *
  * Panel -> server, text messages:
- *   "hello"       (re)connected, send a full frame
+ *   "hello [n]"   (re)connected, send a full frame; n >= 2 means it supports copy ops
  *   "ack <ver>"   finished drawing that update, ready for the next one
  *   "d <x> <y>"   finger down at native panel coordinates
  *   "m <x> <y>"   finger moved (drag)
@@ -28,6 +32,44 @@ const GAP_FILL = 1 // blocks this close count as one region
 const MAX_TILES = 8
 const ACK_TIMEOUT_MS = 3000
 const POINTER_KINDS = { d: 'down', m: 'move', t: 'tap' }
+const COPY_MARKER = 0xffffffff
+
+/**
+ * If the list scrolled between two frames, describe that as an on-screen copy of
+ * pixels the panel already has: the overlap of the list's rect and its shifted self.
+ */
+function scrollCopy(prev, next) {
+  const a = prev.scroll
+  const b = next.scroll
+  if (!a || !b || a.dir.join() !== b.dir.join()) return null
+  if (a.rect.x !== b.rect.x || a.rect.y !== b.rect.y || a.rect.w !== b.rect.w || a.rect.h !== b.rect.h) return null
+  const delta = b.top - a.top
+  if (!delta || !Number.isInteger(delta)) return null
+  const sx = b.dir[0] * delta
+  const sy = b.dir[1] * delta
+  const x0 = Math.max(b.rect.x, 0)
+  const y0 = Math.max(b.rect.y, 0)
+  const x1 = Math.min(b.rect.x + b.rect.w, WIDTH)
+  const y1 = Math.min(b.rect.y + b.rect.h, HEIGHT)
+  const dx0 = Math.max(x0, x0 + sx)
+  const dy0 = Math.max(y0, y0 + sy)
+  const dx1 = Math.min(x1, x1 + sx)
+  const dy1 = Math.min(y1, y1 + sy)
+  if (dx1 <= dx0 || dy1 <= dy0) return null
+  return { x: dx0, y: dy0, w: dx1 - dx0, h: dy1 - dy0, srcX: dx0 - sx, srcY: dy0 - sy }
+}
+
+/** What the panel will show after the copy, so only the remaining differences become tiles. */
+function applyCopy(raw, copy) {
+  const out = Buffer.from(raw)
+  const src = new Uint32Array(raw.buffer, raw.byteOffset, raw.length / 4)
+  const dst = new Uint32Array(out.buffer, out.byteOffset, out.length / 4)
+  for (let row = 0; row < copy.h; row++) {
+    const from = (copy.srcY + row) * WIDTH + copy.srcX
+    dst.set(src.subarray(from, from + copy.w), (copy.y + row) * WIDTH + copy.x)
+  }
+  return out
+}
 
 function dirtyMask(prev, next) {
   const a = new Uint32Array(prev.buffer, prev.byteOffset, prev.length / 4)
@@ -116,7 +158,7 @@ export function maskToRects(mask) {
   }))
 }
 
-async function encodeUpdate(frame, rects, full, quality) {
+async function encodeUpdate(frame, rects, full, quality, copy) {
   const jpegs = await Promise.all(
     rects.map((r) =>
       sharp(frame.raw, { raw: { width: WIDTH, height: HEIGHT, channels: 4 } })
@@ -129,9 +171,20 @@ async function encodeUpdate(frame, rects, full, quality) {
   const header = Buffer.alloc(8)
   header.write('T', 0, 'ascii')
   header.writeUInt8(full ? 1 : 0, 1)
-  header.writeUInt16LE(rects.length, 2)
+  header.writeUInt16LE(rects.length + (copy ? 1 : 0), 2)
   header.writeUInt32LE(frame.version, 4)
   const parts = [header]
+  if (copy) {
+    const op = Buffer.alloc(16)
+    op.writeUInt16LE(copy.x, 0)
+    op.writeUInt16LE(copy.y, 2)
+    op.writeUInt16LE(copy.w, 4)
+    op.writeUInt16LE(copy.h, 6)
+    op.writeUInt32LE(COPY_MARKER, 8)
+    op.writeUInt16LE(copy.srcX, 12)
+    op.writeUInt16LE(copy.srcY, 14)
+    parts.push(op)
+  }
   rects.forEach((r, i) => {
     const tile = Buffer.alloc(12)
     tile.writeUInt16LE(r.x, 0)
@@ -168,9 +221,11 @@ export function attachTileStream({ server, renderer, isAuthorized, quality, log 
       if (isBinary) return
       const [cmd, a, b] = data.toString().trim().split(/\s+/)
       if (cmd === 'hello') {
+        client.canCopy = Number(a) >= 2
         client.sent = null
         settle(client)
       } else if (cmd === 'ack') {
+        if (client.sentAt) log(`  v${a} acked after ${(performance.now() - client.sentAt).toFixed(0)}ms (${client.name})`)
         settle(client)
       } else if (cmd === 'u') {
         client.touchAt = performance.now()
@@ -203,18 +258,27 @@ export function attachTileStream({ server, renderer, isAuthorized, quality, log 
     if (client.sent?.version === frame.version) return
 
     const full = !client.sent
-    const rects = full ? [{ x: 0, y: 0, w: WIDTH, h: HEIGHT }] : maskToRects(dirtyMask(client.sent.raw, frame.raw))
+    let copy = null
+    let base = client.sent?.raw
+    if (!full && client.canCopy) {
+      copy = scrollCopy(client.sent, frame)
+      if (copy) base = applyCopy(client.sent.raw, copy)
+    }
+    const rects = full ? [{ x: 0, y: 0, w: WIDTH, h: HEIGHT }] : maskToRects(dirtyMask(base, frame.raw))
     client.sent = frame
-    if (rects.length === 0) return
+    if (!copy && rects.length === 0) return
 
     client.inflight = true
+    client.sentAt = 0
     const started = performance.now()
-    const msg = await encodeUpdate(frame, rects, full, quality)
+    const msg = await encodeUpdate(frame, rects, full, quality, copy)
     client.ws.send(msg)
+    client.sentAt = performance.now()
     const sinceTouch = client.touchAt ? ` (touch→send ${(performance.now() - client.touchAt).toFixed(0)}ms)` : ''
     client.touchAt = 0
     log(
-      `v${frame.version} -> ${client.name}: ${rects.length} tile(s), ${(msg.length / 1024).toFixed(1)}KB, ` +
+      `v${frame.version} -> ${client.name}: ${copy ? `copy ${copy.w}x${copy.h} + ` : ''}${rects.length} tile(s), ` +
+        `${(msg.length / 1024).toFixed(1)}KB, ` +
         `encoded ${(performance.now() - started).toFixed(0)}ms${sinceTouch}`,
     )
     // If an ack never arrives, resync the client with a full frame.
