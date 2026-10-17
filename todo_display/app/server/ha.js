@@ -5,6 +5,12 @@ import WebSocket from 'ws'
  * entity (HA pushes the full item list on subscribe and on every change), ticks
  * and edits items with todo.update_item and adds them with todo.add_item.
  */
+/** A date goes to due_date, a local "YYYY-MM-DDTHH:MM" to due_datetime (HA's time zone); null clears. */
+function dueField(due) {
+  if (due && due.includes('T')) return { due_datetime: `${due.replace('T', ' ')}:00` }
+  return { due_date: due }
+}
+
 export function createHomeAssistantSource({ url, token, entities, log, onChange }) {
   const lists = new Map() // entity_id -> { name, items }
   const subscriptions = new Map() // subscribe message id -> entity_id
@@ -34,7 +40,8 @@ export function createHomeAssistantSource({ url, token, entities, log, onChange 
       const { friendly_name: name, supported_features: features } = attrs[entityId]
       // SET_DUE_DATE_ON_ITEM (16) | SET_DUE_DATETIME_ON_ITEM (32). The shopping list has neither.
       const dueDates = features === undefined || (features & 48) !== 0
-      lists.set(entityId, { name: name || entityId, dueDates, items: [] })
+      const dueTimes = features === undefined || (features & 32) !== 0
+      lists.set(entityId, { name: name || entityId, dueDates, dueTimes, items: [] })
       const id = nextId++
       subscriptions.set(id, entityId)
       pending.set(id, { resolve() {}, reject: (err) => log(`subscribe ${entityId} failed: ${err.message}`) })
@@ -90,7 +97,13 @@ export function createHomeAssistantSource({ url, token, entities, log, onChange 
 
   return {
     get lists() {
-      return [...lists].map(([entityId, list], index) => ({ id: entityId, name: list.name, index, dueDates: list.dueDates }))
+      return [...lists].map(([entityId, list], index) => ({
+        id: entityId,
+        name: list.name,
+        index,
+        dueDates: list.dueDates,
+        dueTimes: list.dueTimes,
+      }))
     },
     get todos() {
       return [...lists].flatMap(([entityId, list], listIndex) =>
@@ -125,11 +138,11 @@ export function createHomeAssistantSource({ url, token, entities, log, onChange 
         service_data: {
           item: id.slice(sep + 1),
           ...(title !== undefined && { rename: title }),
-          ...(due !== undefined && { due_date: due }),
+          ...(due !== undefined && dueField(due)),
         },
       })
     },
-    /** due is "YYYY-MM-DD" or null. HA pushes the new item through the subscription. */
+    /** due is "YYYY-MM-DD", "YYYY-MM-DDTHH:MM" or null. HA pushes the new item through the subscription. */
     async add(listId, title, due) {
       if (!lists.has(listId)) throw new Error(`unknown list ${listId}`)
       await request({
@@ -137,7 +150,7 @@ export function createHomeAssistantSource({ url, token, entities, log, onChange 
         domain: 'todo',
         service: 'add_item',
         target: { entity_id: listId },
-        service_data: { item: title, ...(due && { due_date: due }) },
+        service_data: { item: title, ...(due && dueField(due)) },
       })
     },
   }

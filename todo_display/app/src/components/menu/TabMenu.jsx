@@ -2,7 +2,8 @@ import { DISPLAY } from '../../config/params.js'
 import { ListIcon, MutedIcon, PlusIcon, SoundIcon } from '../ui/icons.jsx'
 import { TABS } from './tabs.js'
 
-export function TabMenu({ value, onChange, onClose, muted, onToggleMuted }) {
+export function TabMenu({ value, onChange, onClose, sound }) {
+  const { muted, toggleMuted, volume, setVolume, preview } = sound
   return (
     <>
       {/* Flat tint, no blur or shadow: the panel is RGB565. A tap outside closes the menu. */}
@@ -37,7 +38,7 @@ export function TabMenu({ value, onChange, onClose, muted, onToggleMuted }) {
             <button
               role="menuitemcheckbox"
               aria-checked={!muted}
-              onClick={onToggleMuted}
+              onClick={toggleMuted}
               className="flex h-12 w-full items-center gap-3 rounded-2xl px-3 text-left font-serif text-[19px] text-plum"
             >
               <span className="grid size-7 place-items-center rounded-full bg-blush-100 text-rosegold">
@@ -52,6 +53,22 @@ export function TabMenu({ value, onChange, onClose, muted, onToggleMuted }) {
                 {muted ? 'Off' : 'On'}
               </span>
             </button>
+            {/* Lines up under the label. Clicks once on release so the level can be heard. */}
+            <label className="flex h-10 items-center pr-3 pl-[52px]">
+              <span className="sr-only">Tap sound volume</span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={5}
+                value={volume}
+                disabled={muted}
+                onChange={(e) => setVolume(Number(e.target.value))}
+                onPointerUp={(e) => preview(Number(e.currentTarget.value))}
+                className="volume-slider w-full"
+                style={{ '--fill': `${volume}%` }}
+              />
+            </label>
           </>
         )}
       </div>

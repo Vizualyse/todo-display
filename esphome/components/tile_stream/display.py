@@ -69,7 +69,7 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_DATA_PINS, default=DEFAULT_DATA_PINS): cv.All(
                 [PIN], cv.Length(min=16, max=16)
             ),
-            # Runs with `sound` (e.g. "click") when the page asks for one.
+            # Runs with `sound` (e.g. "click") and `volume` (0..1) when the page asks.
             cv.Optional(CONF_ON_SOUND): automation.validate_automation(
                 {cv.GenerateID(CONF_TRIGGER_ID): cv.declare_id(SoundTrigger)}
             ),
@@ -101,7 +101,9 @@ async def to_code(config):
     cg.add(var.set_timings(*(config[name] for name in TIMINGS)))
     for conf in config.get(CONF_ON_SOUND, []):
         trigger = cg.new_Pvariable(conf[CONF_TRIGGER_ID], var)
-        await automation.build_automation(trigger, [(cg.std_string, "sound")], conf)
+        await automation.build_automation(
+            trigger, [(cg.std_string, "sound"), (cg.float_, "volume")], conf
+        )
 
     # Same JPEG decoder (and its S3 SIMD dependency) that ESPHome's runtime images use.
     cg.add_library("JPEGDEC", "1.8.4", "https://github.com/bitbank2/JPEGDEC#1.8.4")

@@ -58,7 +58,7 @@ export default function App() {
   )
   const list = <TodoList todos={visible} onToggle={toggle} onEdit={edit} now={now} />
   const form = editing ? (
-    <TodoForm key={editing.id} todo={editing} dueDates={lists[editing.listIndex]?.dueDates} onSubmit={update} onDone={() => setTab('list')} compact={compact} />
+    <TodoForm key={editing.id} todo={editing} dueDates={lists[editing.listIndex]?.dueDates} dueTimes={lists[editing.listIndex]?.dueTimes} onSubmit={update} onDone={() => setTab('list')} compact={compact} />
   ) : (
     <TodoForm key="add" lists={lists} defaultListId={lists.find((l) => shown.selected.has(l.id))?.id} onSubmit={add} onDone={() => showList('open')} compact={compact} />
   )
@@ -73,8 +73,7 @@ export default function App() {
             setMenuOpen(false)
           }}
           onClose={() => setMenuOpen(false)}
-          muted={sound.muted}
-          onToggleMuted={sound.toggleMuted}
+          sound={sound}
         />
       )}
     </>

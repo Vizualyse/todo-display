@@ -14,11 +14,13 @@ import { HEIGHT, WIDTH } from './renderer.js'
  *   Ops apply in order; a copy always comes first.
  *
  * Server -> panel, text messages (only to panels that advertised "sound"):
- *   "s <name>"    play a sound, e.g. "s click" when a tap hits a button
+ *   "s <name> [volume]"  play a sound, e.g. "s click 70" when a tap hits a
+ *                 button; the volume (0-100) only goes to panels with "volume"
  *
  * Panel -> server, text messages:
  *   "hello [n] [feature...]"  (re)connected, send a full frame; n >= 2 means it
- *                 supports copy ops; feature "sound" means it can play sounds
+ *                 supports copy ops; feature "sound" means it can play sounds,
+ *                 "volume" that it takes a volume with them
  *   "ack <ver>"   finished drawing that update, ready for the next one
  *   "d <x> <y>"   finger down at native panel coordinates
  *   "m <x> <y>"   finger moved (drag)
@@ -227,6 +229,7 @@ export function attachTileStream({ server, renderer, isAuthorized, quality, log 
       if (cmd === 'hello') {
         client.canCopy = Number(a) >= 2
         client.canSound = [b, ...rest].includes('sound')
+        client.canVolume = [b, ...rest].includes('volume')
         client.sent = null
         settle(client)
       } else if (cmd === 'ack') {
@@ -296,9 +299,10 @@ export function attachTileStream({ server, renderer, isAuthorized, quality, log 
   renderer.onFrame(() => {
     for (const client of clients) pump(client)
   })
-  renderer.onSound((name) => {
+  renderer.onSound((name, volume) => {
     for (const client of clients) {
-      if (client.canSound && client.ws.readyState === client.ws.OPEN) client.ws.send(`s ${name}`)
+      if (!client.canSound || client.ws.readyState !== client.ws.OPEN) continue
+      client.ws.send(client.canVolume ? `s ${name} ${volume}` : `s ${name}`)
     }
   })
 }

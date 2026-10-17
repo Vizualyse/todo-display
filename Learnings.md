@@ -98,6 +98,12 @@ CrowPanel 7.0" unless marked otherwise.
 - **Tap sounds come from the page, not the touch handler.** The page knows whether a
   tap hit a button; a bubble-phase `click` listener on `window` never sees the click a
   drag swallows. Server sends `s click` only to panels whose `hello` lists `sound`.
+- **A native `<input type="range">` works on the panel, rotated too.** Chromium maps
+  the mouse through the portrait rotation, so dragging follows the finger. Style it
+  with flat colours (a hard-stop fill), not a gradient.
+- **Chimes are synthesised on the panel** (`esphome/chimes.h`), 16kHz mono, and
+  written to the speaker in one `play()`. That needs `buffer_duration` longer than
+  the longest chime (2s for 1.75s); a short buffer silently truncates it.
 - **Backlight (GPIO2) is off unless a config drives it.** A test firmware without the
   `ledc` backlight light looks blank even though the framebuffer is drawn.
 - **RGB565 bands gradients.** Design with flat colours. The old dark radial
@@ -136,6 +142,11 @@ CrowPanel 7.0" unless marked otherwise.
   change is then final.
 - **`MutationObserver` doesn't fire on scroll.** Listen for `scroll` (capture
   phase) separately.
+- **No native `<select>` on the panel.** Its popup is drawn outside the page and
+  never shows up in the screenshot. Draw dropdowns in the page.
+- **Landscape has no spare height in the add form.** Every extra row pushes the
+  keyboard area off-screen; put extra chips beside the title instead. Screenshot
+  every picker state in all three orientations after form changes.
 - **A drag must swallow the click that ends it**, or dragging ticks the item under
   the finger.
 - **The panel has no keyboard.** Text entry needs an on-screen keyboard in the page;
@@ -170,6 +181,13 @@ CrowPanel 7.0" unless marked otherwise.
   it). There is no way to move an item to another list, so the edit form keeps
   the list fixed. Only send `due_date` if the user changed it, or an existing due
   *time* is lost.
+- **Due times:** `todo.add_item` / `update_item` take `due_datetime` as
+  `"YYYY-MM-DD HH:MM:SS"` in HA's time zone; items come back with an ISO datetime
+  and offset. The page sends `YYYY-MM-DDTHH:MM` local and the server converts.
+  Only lists with `SET_DUE_DATETIME_ON_ITEM` (32) take a time (`dueTimes`).
+- **HA can't store extra fields on a todo item.** Alarms live in the add-on's
+  `/data/alarms.json`, keyed `<entity>|<uid>`. `add_item` doesn't return the uid, so
+  a new todo's alarm is attached when an item with its title appears in the list.
 - **Not every todo list takes due dates.** The shopping list doesn't. Check the
   entity's `supported_features`: `SET_DUE_DATE_ON_ITEM` (16) or
   `SET_DUE_DATETIME_ON_ITEM` (32). The server exposes it as `dueDates` on

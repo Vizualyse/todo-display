@@ -4,6 +4,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import express from 'express'
 import sharp from 'sharp'
+import { createAlarmStore, parseAlarm, startAlarmScheduler } from './alarms.js'
 import { createHomeAssistantSource } from './ha.js'
 import { createMockSource } from './mock.js'
 import { createRenderer, HEIGHT, WIDTH } from './renderer.js'
@@ -62,6 +63,29 @@ const source = config.ha
   : createMockSource({ onChange: broadcast })
 if (!config.ha) log('No Home Assistant connection configured, using mock todos')
 
+const alarms = createAlarmStore({ file: process.env.ALARMS_FILE || '/data/alarms.json', log })
+const todosWithAlarms = () => source.todos.map((t) => ({ ...t, alarm: alarms.get(t.id) }))
+
+/**
+ * HA's add_item doesn't return the new item's id, so its alarm is attached once an
+ * item with that title shows up in the list (it arrives through the subscription).
+ */
+function attachAlarmToNew(listId, title, before, alarm) {
+  const listIndex = source.lists.find((l) => l.id === listId)?.index
+  const started = Date.now()
+  const timer = setInterval(() => {
+    const todo = source.todos.find((t) => t.listIndex === listIndex && t.title === title && !before.has(t.id))
+    if (todo) {
+      alarms.set(todo.id, alarm)
+      broadcast()
+    }
+    if (todo || Date.now() - started > 15_000) clearInterval(timer)
+  }, 250)
+}
+
+// A date, or a local date and time (sent to HA as due_datetime).
+const DUE_RE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?$/
+
 // --- Auth ------------------------------------------------------------------
 
 // Loopback is the headless renderer; 172.30.32.2 is the Supervisor's ingress proxy.
@@ -104,16 +128,20 @@ app.disable('x-powered-by')
 app.use(auth)
 app.use(express.json({ limit: '4kb' }))
 
-app.get('/api/todos', (req, res) => res.json(source.todos))
+app.get('/api/todos', (req, res) => res.json(todosWithAlarms()))
 app.get('/api/lists', (req, res) => res.json(source.lists))
 
 app.post('/api/todos', async (req, res) => {
   const { list, title, due } = req.body ?? {}
   const summary = typeof title === 'string' ? title.trim() : ''
   if (!summary || summary.length > 255) return res.status(400).json({ error: 'title required' })
-  if (due != null && !/^\d{4}-\d{2}-\d{2}$/.test(due)) return res.status(400).json({ error: 'due must be YYYY-MM-DD' })
+  if (due != null && !DUE_RE.test(due)) return res.status(400).json({ error: 'due must be YYYY-MM-DD[THH:MM]' })
+  const alarm = parseAlarm(req.body?.alarm ?? null)
+  if (alarm === undefined) return res.status(400).json({ error: 'bad alarm' })
   try {
+    const before = new Set(source.todos.map((t) => t.id))
     await source.add(String(list), summary, due ?? null)
+    if (alarm?.offsets.length && due?.includes('T')) attachAlarmToNew(String(list), summary, before, alarm)
     res.json({ ok: true })
   } catch (err) {
     log(`add failed: ${err.message}`)
@@ -128,9 +156,15 @@ app.patch('/api/todos/:id', async (req, res) => {
   const { title, due } = req.body ?? {}
   const summary = title === undefined ? undefined : typeof title === 'string' ? title.trim() : ''
   if (summary !== undefined && (!summary || summary.length > 255)) return res.status(400).json({ error: 'title required' })
-  if (due != null && !/^\d{4}-\d{2}-\d{2}$/.test(due)) return res.status(400).json({ error: 'due must be YYYY-MM-DD' })
+  if (due != null && !DUE_RE.test(due)) return res.status(400).json({ error: 'due must be YYYY-MM-DD[THH:MM]' })
+  const alarm = req.body?.alarm === undefined ? undefined : parseAlarm(req.body.alarm)
+  if (req.body?.alarm !== undefined && alarm === undefined) return res.status(400).json({ error: 'bad alarm' })
   try {
     await source.update(todo.id, { title: summary, due })
+    if (alarm !== undefined) {
+      alarms.set(todo.id, alarm)
+      broadcast()
+    }
     res.json({ ok: true })
   } catch (err) {
     log(`update failed: ${err.message}`)
@@ -194,6 +228,7 @@ const server = app.listen(config.port, async () => {
       log,
     })
     attachTileStream({ server, renderer, isAuthorized, quality: config.quality, log })
+    startAlarmScheduler({ store: alarms, getTodos: () => source.todos, play: renderer.playSound, log })
     log('renderer ready')
   } catch (err) {
     log(`renderer failed to start: ${err.message}`)

@@ -18,6 +18,7 @@ esphome:
   friendly_name: CrowPanel ToDo
   includes:
     - usb_disable.h
+    - chimes.h
   platformio_options:
     board_build.flash_mode: dio
   on_boot:
@@ -80,21 +81,19 @@ display:
     id: panel
     url: ${stream_url}
     # Pins, timings and 15MHz PCLK default to the CrowPanel 7.0"; override here if needed.
-    # The page asks for a click when a tap hits a button (muted from the heart menu).
+    # The page asks for a click when a tap hits a button (volume and mute in the heart
+    # menu); the add-on asks for a chime when a todo's alarm is due. See chimes.h.
     on_sound:
+      - lambda: |-
+          if (!chimes::play(id(spk), sound, volume))
+            ESP_LOGW("sound", "Unknown sound '%s'", sound.c_str());
+      # Anything but a click is an alarm: light the screen so the todo can be seen.
       - if:
           condition:
-            lambda: return sound == "click";
+            lambda: return sound != "click";
           then:
-            - lambda: |-
-                // 8ms 2.5kHz tick with a fast decay, 16kHz 16-bit mono.
-                static std::vector<int16_t> pcm = [] {
-                  std::vector<int16_t> v(128);
-                  for (size_t i = 0; i < v.size(); i++)
-                    v[i] = 9000 * expf(-float(i) / 24) * sinf(2 * M_PI * 2500 * i / 16000);
-                  return v;
-                }();
-                id(spk).play(reinterpret_cast<const uint8_t *>(pcm.data()), pcm.size() * 2);
+            - light.turn_on: { id: backlight, transition_length: 0s }
+            - script.execute: screen_idle
 
 i2c:
   sda: GPIO19
@@ -158,6 +157,8 @@ speaker:
     i2s_dout_pin: GPIO17
     channel: mono
     timeout: never
+    # Room for a whole alarm chime (up to 1.75s), queued in one go.
+    buffer_duration: 2s
 
 output:
   - platform: ledc

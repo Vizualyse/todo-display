@@ -1,4 +1,4 @@
-import { CheckIcon, Heart } from '../ui/icons.jsx'
+import { BellIcon, CheckIcon, Heart } from '../ui/icons.jsx'
 import { ListDot } from '../ui/ListDot.jsx'
 
 /** The circle ticks the todo; the rest of the card opens it for editing. */
@@ -30,11 +30,13 @@ export function TodoRow({ todo, onToggle, onEdit, due, left }) {
           </span>
           <span className="mt-1 flex items-center gap-2 text-[11px] font-medium tracking-[0.22em] text-plum-soft uppercase">
             <ListDot index={todo.listIndex} />
-            {todo.list}
+            {/* One line: the list name gives way to the due label and alarm bell. */}
+            <span className="min-w-0 truncate">{todo.list}</span>
             {due && (
               <>
                 <span className="text-blush-300">·</span>
-                <span className={overdue ? 'text-rosegold-deep' : undefined}>{due.label}</span>
+                <span className={`shrink-0 whitespace-nowrap ${overdue ? 'text-rosegold-deep' : ''}`}>{due.label}</span>
+                {todo.alarm && !todo.done && <BellIcon className="size-3.5 shrink-0 text-rosegold" />}
               </>
             )}
           </span>

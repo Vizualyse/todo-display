@@ -40,3 +40,20 @@ html.display.landscape #root { width: 800px; height: 480px; }
 html.display.rot-90 #root, html.display.rot-270 #root { width: 480px; height: 800px; transform-origin: 0 0; }
 html.display.rot-90 #root { transform: rotate(90deg) translateY(-100%); }
 html.display.rot-270 #root { transform: rotate(-90deg) translateX(-100%); }
+
+/* Tap-sound volume: flat plum fill up to the thumb (hard stop, no gradient banding). */
+.volume-slider {
+  appearance: none;
+  height: 8px;
+  border-radius: 9999px;
+  background: linear-gradient(to right, var(--color-plum) var(--fill), var(--color-blush-200) var(--fill));
+}
+.volume-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 9999px;
+  background: var(--color-pearl);
+  border: 2px solid var(--color-plum);
+}
+.volume-slider:disabled { opacity: 0.4; }

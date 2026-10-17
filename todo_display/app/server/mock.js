@@ -27,7 +27,8 @@ export function createMockSource({ onChange }) {
 
   return {
     get lists() {
-      return lists.map((name, index) => ({ id: `mock-${index}`, name, index, dueDates: dueDates(index) }))
+      // Like local_todo, the dated lists take times too.
+      return lists.map((name, index) => ({ id: `mock-${index}`, name, index, dueDates: dueDates(index), dueTimes: dueDates(index) }))
     },
     get todos() {
       return todos

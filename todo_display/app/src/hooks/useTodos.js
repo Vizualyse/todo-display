@@ -25,7 +25,7 @@ export function useTodos() {
     if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || `HTTP ${res.status}`)
   }
   // Both resolve once the source accepted the change; it arrives through the event stream.
-  const add = ({ list, title, due }) => send('POST', 'api/todos', { list, title, due })
+  const add = ({ list, title, due, alarm }) => send('POST', 'api/todos', { list, title, due, alarm })
   /** `due` left out keeps the current one; null clears it. */
   const update = ({ id, ...changes }) => send('PATCH', `api/todos/${encodeURIComponent(id)}`, changes)
   return { todos, lists, toggle, add, update }

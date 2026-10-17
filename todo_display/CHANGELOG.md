@@ -3,6 +3,25 @@
 Bump `version` in `config.yaml` with every change: Home Assistant only rebuilds
 the add-on when the version changes.
 
+## 0.7.0
+
+- Due times: once a date is picked, a *Time* chip opens an hour/minute grid. Only
+  for lists that take due times (`SET_DUE_DATETIME_ON_ITEM`); sent to HA as
+  `due_datetime` in HA's time zone. Editing keeps an existing time.
+- Alarms: for a todo with a time, an *Alarm* chip turns on reminders 1 hour,
+  30 min and/or 5 min before, with a chime per todo (Bell, Ding-dong, Chirp,
+  Harp) picked from a list that plays it on the panel. The add-on rings them (at
+  full volume, even with tap sounds muted) and the panel lights its screen.
+  Reminders are kept in `/data/alarms.json`; todo cards with one show a bell.
+- In landscape the Time and Alarm chips sit beside the title, as icons until set.
+- Volume slider under *Tap sounds* in the heart menu (0-100%, default 70%). It
+  clicks once on release so the level can be heard, and is greyed out while
+  muted.
+- Needs the updated ESPHome config (`chimes.h`, 2s speaker buffer) for chimes;
+  older firmware ignores them.
+- Protocol: panels that also advertise `volume` (`hello 2 sound volume`) get
+  `s click <0-100>`; 0.6.0 firmware still gets plain `s click` (plays at 70%).
+
 ## 0.6.0
 
 - Tap sounds: a tap that lands on a button asks the panel to play a short click.

@@ -65,11 +65,14 @@ export async function createRenderer({ url, executablePath, channel, log }) {
   }
 
   await page.exposeFunction('__frameDirty', () => void capture())
-  // The page asks the panel to play a sound (e.g. a click when a tap hits a button).
-  await page.exposeFunction('__sound', (name) => {
+  // The page asks the panel to play a sound (e.g. a click when a tap hits a button)
+  // at a volume of 0-100.
+  function playSound(name, volume) {
     if (typeof name !== 'string' || !/^[a-z]{1,15}$/.test(name)) return
-    for (const fn of soundListeners) fn(name)
-  })
+    const vol = Math.min(100, Math.max(0, Math.round(Number(volume ?? 70)) || 0))
+    for (const fn of soundListeners) fn(name, vol)
+  }
+  await page.exposeFunction('__sound', playSound)
   page.on('crash', () => {
     log('page crashed, reloading')
     page.reload().catch(() => {})
@@ -87,6 +90,8 @@ export async function createRenderer({ url, executablePath, channel, log }) {
       listeners.add(fn)
       return () => listeners.delete(fn)
     },
+    /** Also used by the server itself, e.g. for alarm chimes. */
+    playSound,
     onSound(fn) {
       soundListeners.add(fn)
       return () => soundListeners.delete(fn)

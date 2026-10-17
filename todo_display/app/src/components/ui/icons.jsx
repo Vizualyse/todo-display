@@ -23,6 +23,10 @@ export const NextIcon = () => <Icon d="M9 5l7 7-7 7" />
 export const CloseIcon = () => <Icon d="M6 6l12 12M18 6L6 18" />
 export const SoundIcon = () => <Icon d="M4 9.5v5h3.5L12 18V6L7.5 9.5zM15.5 9.5a3.5 3.5 0 0 1 0 5M18 7a7 7 0 0 1 0 10" />
 export const MutedIcon = () => <Icon d="M4 9.5v5h3.5L12 18V6L7.5 9.5zM16 10l4 4M20 10l-4 4" />
+export const BellIcon = ({ className = 'size-4' }) => <Icon className={className} d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20.5a2 2 0 0 0 4 0" />
+export const ClockIcon = () => <Icon d="M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17zM12 7.5V12l3 2" />
+export const ChevronIcon = () => <Icon d="M6 9l6 6 6-6" />
+export const PlayIcon = () => <Icon d="M8 5.5v13l10-6.5z" />
 export const FilterIcon = () => <Icon className="size-5" d="M4 5h16l-6 7.5V18l-4 2v-7.5z" />
 
 export function CheckIcon() {

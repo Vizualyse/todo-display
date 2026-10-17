@@ -45,9 +45,9 @@ class TileStreamDisplay : public display::Display {
   void touch_move(int x, int y);
   void touch_up();
   bool is_stream_connected() const { return this->ws_connected_; }
-  /// Sounds the page asks for (e.g. "click"). Without callbacks the panel doesn't
-  /// advertise sound, so the server never sends any.
-  void add_on_sound_callback(std::function<void(std::string)> &&callback) {
+  /// Sounds the page asks for (e.g. "click"), with a volume of 0..1. Without
+  /// callbacks the panel doesn't advertise sound, so the server never sends any.
+  void add_on_sound_callback(std::function<void(std::string, float)> &&callback) {
     this->sound_callbacks_.add(std::move(callback));
   }
 
@@ -84,6 +84,7 @@ class TileStreamDisplay : public display::Display {
   };
   struct Sound {
     char name[16];
+    float volume;
   };
 
   int get_width_internal() override { return this->width_; }
@@ -117,7 +118,7 @@ class TileStreamDisplay : public display::Display {
   // Written by the WebSocket task, consumed in loop().
   QueueHandle_t updates_{nullptr};
   QueueHandle_t sounds_{nullptr};
-  CallbackManager<void(std::string)> sound_callbacks_;
+  CallbackManager<void(std::string, float)> sound_callbacks_;
   std::atomic<bool> ws_connected_{false};
   std::atomic<bool> ws_just_connected_{false};
   uint8_t *rx_buf_{nullptr};
@@ -130,10 +131,11 @@ class TileStreamDisplay : public display::Display {
   int last_touch_y_{0};
 };
 
-class SoundTrigger : public Trigger<std::string> {
+class SoundTrigger : public Trigger<std::string, float> {
  public:
   explicit SoundTrigger(TileStreamDisplay *parent) {
-    parent->add_on_sound_callback([this](const std::string &sound) { this->trigger(sound); });
+    parent->add_on_sound_callback(
+        [this](const std::string &sound, float volume) { this->trigger(sound, volume); });
   }
 };
 

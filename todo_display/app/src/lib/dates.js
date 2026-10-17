@@ -2,6 +2,9 @@ export const isDateOnly = (due) => /^\d{4}-\d{2}-\d{2}$/.test(due)
 export const parseDue = (due) => (isDateOnly(due) ? new Date(`${due}T00:00:00`) : new Date(due))
 const midnight = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate())
 export const isoDate = (d) => d.toLocaleDateString('en-CA') // YYYY-MM-DD in local time
+/** "HH:MM" of a datetime due, in local time; null for a date-only due. */
+export const dueTime = (due) =>
+  due && !isDateOnly(due) ? parseDue(due).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : null
 export const shortDate = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
 
 export const addDays = (d, n) => {

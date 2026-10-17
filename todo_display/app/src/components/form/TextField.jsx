@@ -4,7 +4,7 @@ export function TextField({ text, focused, onClick, compact }) {
     // row-reverse: once the text is wider than the field, its start is clipped, not the caret.
     <button
       onClick={onClick}
-      className={`flex shrink-0 flex-row-reverse items-center overflow-hidden rounded-[22px] border-[1.5px] bg-pearl px-5 ${
+      className={`flex min-w-0 shrink-0 flex-row-reverse items-center overflow-hidden rounded-[22px] border-[1.5px] bg-pearl px-5 ${
         focused ? 'border-rosegold' : 'border-blush-300'
       } ${compact ? 'h-[52px]' : 'h-16'}`}
     >

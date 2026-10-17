@@ -1,4 +1,4 @@
-import { addDays, deadlineOf, isDateOnly, isoDate, parseDue } from './dates.js'
+import { addDays, deadlineOf, dueTime, isDateOnly, isoDate, parseDue } from './dates.js'
 
 export const FILTERS = [
   { id: 'open', label: 'To do', test: (t) => !t.done },
@@ -25,17 +25,22 @@ export const DUE_CHOICES = [
   { id: 'custom', label: 'Custom' }, // picked on a calendar
 ]
 
-/** The form's starting due choice: a quick chip when one matches, otherwise a custom date. */
+/**
+ * The form's starting due choice: a quick chip when one matches, otherwise a custom
+ * date; plus the time ("HH:MM") when the due has one.
+ */
 export function initialDue(due) {
-  if (!due) return { id: 'none', custom: null }
+  if (!due) return { id: 'none', custom: null, time: null }
   const date = isDateOnly(due) ? due : isoDate(parseDue(due))
+  const time = dueTime(due)
   const quick = DUE_CHOICES.find((c) => c.id !== 'none' && c.date && isoDate(c.date(new Date())) === date)
-  return quick ? { id: quick.id, custom: null } : { id: 'custom', custom: date }
+  return quick ? { id: quick.id, custom: null, time } : { id: 'custom', custom: date, time }
 }
 
-/** YYYY-MM-DD for a due choice, or null for none. */
-export function dueValue(id, customDate) {
-  if (id === 'custom') return customDate
-  const date = DUE_CHOICES.find((c) => c.id === id).date(new Date())
-  return date && isoDate(date)
+/** "YYYY-MM-DD", "YYYY-MM-DDTHH:MM" (local time) when a time is set, or null for none. */
+export function dueValue(id, customDate, time) {
+  const date = id === 'custom' ? customDate : DUE_CHOICES.find((c) => c.id === id).date(new Date())
+  if (!date) return null
+  const day = typeof date === 'string' ? date : isoDate(date)
+  return time ? `${day}T${time}` : day
 }
