@@ -23,6 +23,8 @@ if (DISPLAY) {
   new MutationObserver(dirty).observe(document.body, {
     subtree: true, childList: true, attributes: true, characterData: true,
   })
+  // Scrolling repaints without touching the DOM, so watch it separately.
+  addEventListener('scroll', dirty, true)
   document.fonts.ready.then(dirty)
 }
 

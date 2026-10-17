@@ -64,13 +64,27 @@
     }
   }
 
-  canvas.onclick = (e) => {
+  const toPanel = (e) => {
     const r = canvas.getBoundingClientRect()
     const b = 12
     const x = Math.round(((e.clientX - r.left - b) * 800) / (r.width - 2 * b))
     const y = Math.round(((e.clientY - r.top - b) * 480) / (r.height - 2 * b))
+    return `${Math.min(799, Math.max(0, x))} ${Math.min(479, Math.max(0, y))}`
+  }
+  let pressed = false
+  canvas.onmousedown = (e) => {
+    pressed = true
     touchAt = performance.now()
-    ws.send(`t ${x} ${y}`)
+    ws.send(`d ${toPanel(e)}`)
+  }
+  canvas.onmousemove = (e) => {
+    if (pressed) ws.send(`m ${toPanel(e)}`)
+  }
+  window.onmouseup = () => {
+    if (!pressed) return
+    pressed = false
+    touchAt = performance.now()
+    ws.send('u')
   }
 
   connect()

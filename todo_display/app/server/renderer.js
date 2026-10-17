@@ -21,6 +21,7 @@ export async function createRenderer({ url, executablePath, channel, log }) {
   let frame = null // { raw: Buffer (RGBA), version, capturedAt }
   let capturing = false
   let again = false
+  let input = Promise.resolve()
   const listeners = new Set()
 
   async function capture() {
@@ -66,9 +67,19 @@ export async function createRenderer({ url, executablePath, channel, log }) {
       listeners.add(fn)
       return () => listeners.delete(fn)
     },
-    /** Replay a panel touch as a real click; the resulting frame arrives via onFrame. */
-    async tap(x, y) {
-      await page.mouse.click(x, y)
+    /**
+     * Replay panel touches as real mouse input, strictly in arrival order. The
+     * resulting frames arrive via onFrame. kind: 'tap' | 'down' | 'move' | 'up'.
+     */
+    pointer(kind, x, y) {
+      input = input
+        .then(() => {
+          if (kind === 'tap') return page.mouse.click(x, y)
+          if (kind === 'down') return page.mouse.move(x, y).then(() => page.mouse.down())
+          if (kind === 'move') return page.mouse.move(x, y)
+          if (kind === 'up') return page.mouse.up()
+        })
+        .catch((err) => log(`input ${kind} failed: ${err.message}`))
     },
     async close() {
       clearInterval(safety)

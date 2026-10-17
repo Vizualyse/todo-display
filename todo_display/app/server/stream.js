@@ -12,7 +12,10 @@ import { HEIGHT, WIDTH } from './renderer.js'
  * Panel -> server, text messages:
  *   "hello"       (re)connected, send a full frame
  *   "ack <ver>"   finished drawing that update, ready for the next one
- *   "t <x> <y>"   touch at native panel coordinates
+ *   "d <x> <y>"   finger down at native panel coordinates
+ *   "m <x> <y>"   finger moved (drag)
+ *   "u"           finger lifted (a down + up without much movement is a tap)
+ *   "t <x> <y>"   complete tap, from firmware without drag support
  *
  * One update is in flight per client. Changes that happen meanwhile are coalesced
  * into the next diff, so a slow panel never builds a backlog.
@@ -24,6 +27,7 @@ const ROWS = HEIGHT / BLOCK
 const GAP_FILL = 1 // blocks this close count as one region
 const MAX_TILES = 8
 const ACK_TIMEOUT_MS = 3000
+const POINTER_KINDS = { d: 'down', m: 'move', t: 'tap' }
 
 function dirtyMask(prev, next) {
   const a = new Uint32Array(prev.buffer, prev.byteOffset, prev.length / 4)
@@ -168,12 +172,15 @@ export function attachTileStream({ server, renderer, isAuthorized, quality, log 
         settle(client)
       } else if (cmd === 'ack') {
         settle(client)
-      } else if (cmd === 't') {
+      } else if (cmd === 'u') {
+        client.touchAt = performance.now()
+        renderer.pointer('up')
+      } else if (POINTER_KINDS[cmd]) {
         const x = Number(a)
         const y = Number(b)
         if (x >= 0 && x < WIDTH && y >= 0 && y < HEIGHT) {
           client.touchAt = performance.now()
-          renderer.tap(x, y).catch((err) => log(`tap failed: ${err.message}`))
+          renderer.pointer(POINTER_KINDS[cmd], x, y)
         }
       }
     })

@@ -1,5 +1,5 @@
 name: ToDo Display
-version: "0.1.0"
+version: "0.2.0"
 slug: todo_display
 description: Todo list rendered server-side and streamed as tiles to a CrowPanel display
 url: https://github.com/Vizualyse/todo-display
@@ -9,6 +9,8 @@ arch:
 startup: application
 boot: auto
 init: true
+# Read and tick todo items through Core's API (token supplied by the Supervisor).
+homeassistant_api: true
 ingress: true
 ingress_port: 8099
 panel_icon: mdi:format-list-checks
@@ -19,11 +21,15 @@ ports_description:
   8099/tcp: Panel stream and web page (protected by display_secret)
 options:
   display_secret: change-me
+  # Empty shows every todo list, otherwise only these, in this order.
+  todo_entities: []
   orientation: portrait
   rotation: 90
   jpeg_quality: 80
 schema:
   display_secret: password
+  todo_entities:
+    - "match(^todo\\.[a-z0-9_]+$)"
   orientation: list(portrait|landscape)
   rotation: list(90|270)
   jpeg_quality: int(40,95)

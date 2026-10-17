@@ -1,10 +1,22 @@
-import { useEffect, useState } from 'react'
-import { FORCED_ORIENTATION } from './params.js'
+import { useEffect, useRef, useState } from 'react'
+import { DISPLAY, FORCED_ORIENTATION, ROTATE } from './params.js'
 
-const LIST_DOTS = {
-  Home: 'bg-rosegold',
-  Errands: 'bg-champagne',
-  Work: 'bg-plum-soft',
+const LIST_DOTS = ['bg-rosegold', 'bg-champagne', 'bg-plum-soft', 'bg-blush-300']
+
+/** HA due values are "YYYY-MM-DD" or an ISO datetime; show them relative to now. */
+function formatDue(due, now) {
+  if (!due) return null
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(due)
+  const date = dateOnly ? new Date(`${due}T00:00:00`) : new Date(due)
+  const midnight = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate())
+  const days = Math.round((midnight(date) - midnight(now)) / 86_400_000)
+  const time = dateOnly ? '' : ` ${date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`
+  const overdue = dateOnly ? days < 0 : date < now
+  if (overdue) return { label: 'Overdue', overdue }
+  if (days === 0) return { label: `Today${time}` }
+  if (days === 1) return { label: `Tomorrow${time}` }
+  if (days < 7) return { label: date.toLocaleDateString('en-GB', { weekday: 'long' }) + time }
+  return { label: date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) }
 }
 
 const FILTERS = [
@@ -54,7 +66,7 @@ function useTodos() {
   const toggle = (id) => {
     // Optimistic: the DOM changes immediately, so the panel gets its new frame fast.
     setTodos((ts) => ts.map((t) => (t.id === id ? { ...t, done: !t.done } : t)))
-    fetch(`api/todos/${id}/toggle`, { method: 'POST' })
+    fetch(`api/todos/${encodeURIComponent(id)}/toggle`, { method: 'POST' })
   }
   return { todos, toggle }
 }
@@ -69,7 +81,7 @@ export default function App() {
   const header = <Header now={now} />
   const summary = <Summary todos={todos} />
   const filters = <Filters value={filter} onChange={setFilter} todos={todos} />
-  const list = <TodoList todos={visible} onToggle={toggle} />
+  const list = <TodoList todos={visible} onToggle={toggle} now={now} />
 
   if (orientation === 'landscape') {
     return (
@@ -158,7 +170,7 @@ function Summary({ todos }) {
             </>
           )}
         </p>
-        <p className="mt-1 text-[12px] font-medium tracking-[0.24em] text-plum-soft uppercase">
+        <p className="mt-1 text-[12px] font-medium tracking-[0.2em] whitespace-nowrap text-plum-soft uppercase">
           {done} of {total} complete
         </p>
       </div>
@@ -214,7 +226,55 @@ function Filters({ value, onChange, todos }) {
   )
 }
 
-function TodoList({ todos, onToggle }) {
+/**
+ * Drag-to-scroll for mouse input, which is what panel touches arrive as. In portrait
+ * the page is rotated onto the panel, so the finger's screen movement is mapped onto
+ * the list's own axis. A drag swallows the click that would otherwise end it.
+ */
+function useDragScroll() {
+  const ref = useRef(null)
+  useEffect(() => {
+    const el = ref.current
+    const rotated = DISPLAY && FORCED_ORIENTATION !== 'landscape'
+    const alongList = (dx, dy) => (!rotated ? dy : ROTATE === 90 ? -dx : dx)
+    let start = null
+    let dragged = false
+
+    const onDown = (e) => {
+      if (e.pointerType !== 'mouse') return
+      start = { x: e.clientX, y: e.clientY, top: el.scrollTop }
+      dragged = false
+    }
+    const onMove = (e) => {
+      if (!start || !(e.buttons & 1)) return
+      const delta = alongList(e.clientX - start.x, e.clientY - start.y)
+      if (Math.abs(delta) > 12) dragged = true
+      if (dragged) el.scrollTop = start.top - delta
+    }
+    const onUp = () => {
+      start = null
+    }
+    const onClick = (e) => {
+      if (!dragged) return
+      dragged = false
+      e.stopPropagation()
+      e.preventDefault()
+    }
+    el.addEventListener('pointerdown', onDown)
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    el.addEventListener('click', onClick, true)
+    return () => {
+      el.removeEventListener('pointerdown', onDown)
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      el.removeEventListener('click', onClick, true)
+    }
+  }, [])
+  return ref
+}
+
+function TodoList({ todos, onToggle, now }) {
   if (todos.length === 0) {
     return (
       <div className="grid min-h-0 flex-1 place-items-center rounded-[28px] border border-dashed border-blush-300">
@@ -222,18 +282,27 @@ function TodoList({ todos, onToggle }) {
       </div>
     )
   }
+  return <ScrollingList todos={todos} onToggle={onToggle} now={now} />
+}
+
+function ScrollingList({ todos, onToggle, now }) {
+  const ref = useDragScroll()
   return (
-    <ul className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-hidden [mask-image:linear-gradient(to_bottom,black_92%,transparent)]">
+    <ul
+      ref={ref}
+      className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto pb-8 [mask-image:linear-gradient(to_bottom,black_92%,transparent)] [scrollbar-width:none]"
+    >
       {todos.map((t) => (
         <li key={t.id}>
-          <TodoRow todo={t} onToggle={onToggle} />
+          <TodoRow todo={t} onToggle={onToggle} due={formatDue(t.due, now)} />
         </li>
       ))}
     </ul>
   )
 }
 
-function TodoRow({ todo, onToggle }) {
+function TodoRow({ todo, onToggle, due }) {
+  const overdue = due?.overdue && !todo.done
   return (
     <button
       onClick={() => onToggle(todo.id)}
@@ -259,13 +328,17 @@ function TodoRow({ todo, onToggle }) {
           {todo.title}
         </span>
         <span className="mt-1 flex items-center gap-2 text-[11px] font-medium tracking-[0.22em] text-plum-soft uppercase">
-          <span className={`size-1.5 rounded-full ${LIST_DOTS[todo.list]}`} />
+          <span className={`size-1.5 rounded-full ${LIST_DOTS[todo.listIndex % LIST_DOTS.length]}`} />
           {todo.list}
-          <span className="text-blush-300">·</span>
-          {todo.due}
+          {due && (
+            <>
+              <span className="text-blush-300">·</span>
+              <span className={overdue ? 'text-rosegold-deep' : undefined}>{due.label}</span>
+            </>
+          )}
         </span>
       </span>
-      {todo.priority && !todo.done && <Heart className="size-5 shrink-0 text-rosegold" />}
+      {overdue && <Heart className="size-5 shrink-0 text-rosegold" />}
     </button>
   )
 }

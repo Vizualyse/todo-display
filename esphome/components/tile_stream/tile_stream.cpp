@@ -122,10 +122,32 @@ void TileStreamDisplay::send_text_(const char *text) {
   esp_websocket_client_send_text(this->client_, text, strlen(text), pdMS_TO_TICKS(250));
 }
 
-void TileStreamDisplay::send_touch(int x, int y) {
+void TileStreamDisplay::touch_down(int x, int y) {
   char msg[24];
-  snprintf(msg, sizeof(msg), "t %d %d", x, y);
+  snprintf(msg, sizeof(msg), "d %d %d", x, y);
   this->send_text_(msg);
+  this->touching_ = true;
+  this->last_touch_x_ = x;
+  this->last_touch_y_ = y;
+}
+
+void TileStreamDisplay::touch_move(int x, int y) {
+  // Skip jitter; the server only needs meaningful movement.
+  static constexpr int MIN_MOVE_PX = 4;
+  if (!this->touching_ || (abs(x - this->last_touch_x_) < MIN_MOVE_PX && abs(y - this->last_touch_y_) < MIN_MOVE_PX))
+    return;
+  char msg[24];
+  snprintf(msg, sizeof(msg), "m %d %d", x, y);
+  this->send_text_(msg);
+  this->last_touch_x_ = x;
+  this->last_touch_y_ = y;
+}
+
+void TileStreamDisplay::touch_up() {
+  if (!this->touching_)
+    return;
+  this->touching_ = false;
+  this->send_text_("u");
 }
 
 // Runs on the WebSocket task: only reassemble messages and hand them to loop().

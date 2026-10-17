@@ -86,7 +86,13 @@ touchscreen:
     address: 0x5D
     update_interval: 50ms
     on_touch:
-      - lambda: id(panel).send_touch(touch.x, touch.y);
+      - lambda: id(panel).touch_down(touch.x, touch.y);
+    on_update:
+      - lambda: |-
+          if (!touches.empty())
+            id(panel).touch_move(touches[0].x, touches[0].y);
+    on_release:
+      - lambda: id(panel).touch_up();
 
 output:
   - platform: ledc

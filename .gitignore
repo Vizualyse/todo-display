@@ -2,3 +2,4 @@ node_modules/
 dist/
 esphome/.esphome/
 esphome/secrets.yaml
+.ha-token

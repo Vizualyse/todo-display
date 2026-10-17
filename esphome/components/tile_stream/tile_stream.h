@@ -37,8 +37,11 @@ class TileStreamDisplay : public display::Display {
   display::DisplayType get_display_type() override { return display::DISPLAY_TYPE_COLOR; }
   void draw_pixel_at(int x, int y, Color color) override;
 
-  /// Forward a touch (native panel coordinates) to the server.
-  void send_touch(int x, int y);
+  /// Forward touches (native panel coordinates) to the server. A down + up with
+  /// little movement is a tap; moves in between drag (e.g. scroll the list).
+  void touch_down(int x, int y);
+  void touch_move(int x, int y);
+  void touch_up();
   bool is_stream_connected() const { return this->ws_connected_; }
 
   void set_url(const std::string &url) { this->url_ = url; }
@@ -105,6 +108,10 @@ class TileStreamDisplay : public display::Display {
   std::atomic<bool> ws_just_connected_{false};
   uint8_t *rx_buf_{nullptr};
   size_t rx_len_{0};
+
+  bool touching_{false};
+  int last_touch_x_{0};
+  int last_touch_y_{0};
 };
 
 }  // namespace tile_stream

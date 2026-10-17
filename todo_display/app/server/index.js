@@ -4,6 +4,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import express from 'express'
 import sharp from 'sharp'
+import { createHomeAssistantSource } from './ha.js'
+import { createMockSource } from './mock.js'
 import { createRenderer, HEIGHT, WIDTH } from './renderer.js'
 import { attachTileStream } from './stream.js'
 
@@ -18,7 +20,21 @@ function loadConfig() {
     opts = JSON.parse(fs.readFileSync('/data/options.json', 'utf8'))
   } catch {}
   const env = process.env
+  let haToken = env.HA_TOKEN
+  if (!haToken && env.HA_TOKEN_FILE) {
+    try {
+      haToken = fs.readFileSync(env.HA_TOKEN_FILE, 'utf8').trim()
+    } catch {}
+  }
+  const ha = env.SUPERVISOR_TOKEN
+    ? // Inside the add-on: the Supervisor proxies Core and supplies the token.
+      { url: 'ws://supervisor/core/websocket', token: env.SUPERVISOR_TOKEN }
+    : env.HA_URL && haToken
+      ? { url: env.HA_URL.replace(/^http/, 'ws').replace(/\/$/, '') + '/api/websocket', token: haToken }
+      : null
   return {
+    ha,
+    todoEntities: opts.todo_entities ?? (env.TODO_ENTITIES ? env.TODO_ENTITIES.split(',').map((s) => s.trim()) : []),
     port: Number(env.PORT || 8099),
     secret: String(opts.display_secret || env.DISPLAY_SECRET || 'dev-secret'),
     orientation: opts.orientation || env.ORIENTATION || 'portrait',
@@ -34,23 +50,17 @@ if (config.secret === 'change-me' || config.secret === 'dev-secret') {
   log('WARNING: display_secret is still the default, set a real one in the add-on options')
 }
 
-// --- Mock todo store -------------------------------------------------------
-
-let todos = [
-  { id: 1, title: 'Take the bins out', list: 'Home', due: 'Tonight', done: false, priority: true },
-  { id: 2, title: 'Book dentist appointment', list: 'Errands', due: 'Today', done: false },
-  { id: 3, title: 'Water the plants', list: 'Home', due: 'Today', done: true },
-  { id: 4, title: 'Review Q4 roadmap', list: 'Work', due: 'Mon', done: false },
-  { id: 5, title: 'Pick up parcel from the post office', list: 'Errands', due: 'Today', done: false },
-  { id: 6, title: 'Renew car insurance', list: 'Errands', due: 'Fri', done: false, priority: true },
-  { id: 7, title: 'Call Mum', list: 'Home', due: 'Sun', done: true },
-  { id: 8, title: 'Descale the coffee machine', list: 'Home', due: 'Sat', done: false },
-]
+// --- Todo source -----------------------------------------------------------
 
 const subscribers = new Set()
 const broadcast = () => {
   for (const res of subscribers) res.write('data: changed\n\n')
 }
+
+const source = config.ha
+  ? createHomeAssistantSource({ ...config.ha, entities: config.todoEntities, log, onChange: broadcast })
+  : createMockSource({ onChange: broadcast })
+if (!config.ha) log('No Home Assistant connection configured, using mock todos')
 
 // --- Auth ------------------------------------------------------------------
 
@@ -93,13 +103,20 @@ const app = express()
 app.disable('x-powered-by')
 app.use(auth)
 
-app.get('/api/todos', (req, res) => res.json(todos))
+app.get('/api/todos', (req, res) => res.json(source.todos))
 
-app.post('/api/todos/:id/toggle', (req, res) => {
-  const id = Number(req.params.id)
-  todos = todos.map((t) => (t.id === id ? { ...t, done: !t.done } : t))
-  broadcast()
-  res.json(todos.find((t) => t.id === id) ?? null)
+app.post('/api/todos/:id/toggle', async (req, res) => {
+  const todo = source.todos.find((t) => t.id === req.params.id)
+  if (!todo) return res.status(404).json({ error: 'no such todo' })
+  try {
+    await source.setDone(todo.id, !todo.done)
+    res.json({ ok: true })
+  } catch (err) {
+    log(`toggle failed: ${err.message}`)
+    // Tell pages to reload so the optimistic tick is rolled back.
+    broadcast()
+    res.status(502).json({ error: err.message })
+  }
 })
 
 app.get('/api/events', (req, res) => {
