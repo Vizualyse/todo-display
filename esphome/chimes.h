@@ -5,6 +5,7 @@
 // names match CHIMES in the add-on (server/alarms.js, src/lib/alarms.js).
 
 #include "esphome/components/speaker/speaker.h"
+#include "esphome/core/hal.h"
 #include "esphome/core/log.h"
 
 #include <esp_heap_caps.h>
@@ -22,18 +23,39 @@ struct Partial {
   float ratio, amp;
 };
 
+static constexpr int MAX_PARTIALS = 4;
+
 // A struck/plucked note: fast attack, exponential decay, a few harmonics.
+// This runs in the main loop, so no trig per sample: each partial is a rotating
+// phasor and the decay a running product. sinf/expf per sample at 48kHz took long
+// enough to trip the task watchdog.
 static void add_note(float *buf, float start, float freq, float dur, float tau, const Partial *partials, int count,
                      float gain = 1.0f) {
   const int from = start * RATE;
   const int len = std::min<int>(dur * RATE, MAX_SAMPLES - from);
+  count = std::min(count, MAX_PARTIALS);
+  float c[MAX_PARTIALS], s[MAX_PARTIALS], x[MAX_PARTIALS], y[MAX_PARTIALS];
+  for (int p = 0; p < count; p++) {
+    const float w = 2 * float(M_PI) * freq * partials[p].ratio / RATE;
+    c[p] = cosf(w);
+    s[p] = sinf(w);
+    x[p] = 1;  // cos(phase)
+    y[p] = 0;  // sin(phase)
+  }
+  const float decay = expf(-1.0f / (tau * RATE));
+  float e = 1;
   for (int i = 0; i < len; i++) {
     const float t = float(i) / RATE;
-    const float env = std::min(1.0f, t / 0.003f) * expf(-t / tau) * std::min(1.0f, (dur - t) / 0.02f);
+    const float env = std::min(1.0f, t / 0.003f) * e * std::min(1.0f, (dur - t) / 0.02f);
     float v = 0;
-    for (int p = 0; p < count; p++)
-      v += partials[p].amp * sinf(2 * float(M_PI) * freq * partials[p].ratio * t);
+    for (int p = 0; p < count; p++) {
+      v += partials[p].amp * y[p];
+      const float nx = x[p] * c[p] - y[p] * s[p];
+      y[p] = x[p] * s[p] + y[p] * c[p];
+      x[p] = nx;
+    }
     buf[from + i] += gain * env * v;
+    e *= decay;
   }
 }
 
@@ -102,6 +124,7 @@ static bool play(esphome::speaker::Speaker *spk, const std::string &name, float 
   static int16_t *pcm = static_cast<int16_t *>(heap_caps_malloc(MAX_SAMPLES * sizeof(int16_t), MALLOC_CAP_SPIRAM));
   if (mix == nullptr || pcm == nullptr)
     return false;
+  const uint32_t started = esphome::millis();
   const int len = synth(name, mix);
   if (len == 0)
     return false;
@@ -112,6 +135,7 @@ static bool play(esphome::speaker::Speaker *spk, const std::string &name, float 
   for (int i = 0; i < len; i++)
     pcm[i] = shape(mix[i] / max, volume);
   const size_t bytes = len * sizeof(int16_t);
+  ESP_LOGD("chimes", "%s synthesised in %ums", name.c_str(), (unsigned) (esphome::millis() - started));
   const size_t written = spk->play(reinterpret_cast<const uint8_t *>(pcm), bytes);
   if (written < bytes)
     ESP_LOGW("chimes", "%s: only %u of %u bytes fit the speaker buffer", name.c_str(), (unsigned) written,

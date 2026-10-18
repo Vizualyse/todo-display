@@ -109,6 +109,15 @@ CrowPanel 7.0" unless marked otherwise.
   finds the panel over mDNS and connects by itself, even before the device is in
   HA. Its HA media player (with metadata/art) only exists once the Music
   Assistant *integration* is set up in HA.
+- **Don't run heavy maths in an ESPHome callback: the task watchdog reboots the panel.**
+  `on_sound` runs in the main loop. Synthesising a chime with `sinf`/`expf` per
+  sample per partial was fine at 16kHz but at 48kHz (and with code fetched from
+  PSRAM) it tripped `Task wdt` on core 1. The symptom looked like "the screen lit up
+  but no sound": the reboot turns the backlight on (`ALWAYS_ON`) and the add-on logs a
+  new stream connection. The synth now uses rotating phasors and a running decay
+  product, with no trig per sample. The API log shows `CRASH DETECTED ON PREVIOUS BOOT`
+  with a backtrace on the next connection. Decode it with the toolchain's `addr2line`
+  in the `esphome-build` volume.
 - **One amp, three sounds: `mixer` speaker** with an effects source (clicks,
   chimes, `timeout: never`) and a music source, all at 48kHz so no `resampler` is
   needed; the chimes are synthesised at 48kHz to match. Don't name the mixer
