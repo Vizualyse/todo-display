@@ -3,6 +3,15 @@
 Bump `version` in `config.yaml` with every change: Home Assistant only rebuilds
 the add-on when the version changes.
 
+## 0.10.1
+
+- Music page: every Music Assistant speaker that can join a group gets a switch,
+  so a TV or projector that isn't playing can be added. Before, only speakers
+  the add-on had seen in the group were offered. Music Assistant's browser
+  players ("Web (...)") and speakers that can't group (Echo) are left out;
+  `music_speakers` still sets the list explicitly.
+- The page is titled *Music* instead of the group's name.
+
 ## 0.10.0
 
 - Music page: *Search & speakers* in the music popover (or *Music* in the heart

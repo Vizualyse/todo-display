@@ -1,5 +1,5 @@
 name: ToDo Display
-version: "0.10.0"
+version: "0.10.1"
 slug: todo_display
 description: Todo list rendered server-side and streamed as tiles to a CrowPanel display
 url: https://github.com/Vizualyse/todo-display
@@ -32,7 +32,7 @@ options:
   music_player: ""
   # Empty finds the Music Assistant sync group the panel's player is in.
   music_group: ""
-  # Speakers offered on the music page; empty remembers every one seen in the group.
+  # Speakers offered on the music page; empty offers every one that can join the group.
   music_speakers: []
 schema:
   display_secret: password

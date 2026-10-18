@@ -201,6 +201,10 @@ export function createHomeAssistantSource({ url, token, entities, musicPlayer, m
       const id = musicId && groupId()
       return id ? { entityId: id, ...players.get(id) } : null
     },
+    /** Every media player, in Home Assistant's order. */
+    get players() {
+      return [...players].map(([entityId, p]) => ({ entityId, ...p }))
+    },
     /** Any media player's { state, attributes }, or null. */
     player(entityId) {
       return players.get(entityId) ?? null

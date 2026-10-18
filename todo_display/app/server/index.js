@@ -41,7 +41,7 @@ function loadConfig() {
     musicPlayer: opts.music_player || env.MUSIC_PLAYER || '',
     // Empty finds the Music Assistant group the panel's player belongs to.
     musicGroup: opts.music_group || env.MUSIC_GROUP || '',
-    // Speakers offered on the music page; empty remembers every one seen in the group.
+    // Speakers offered on the music page; empty offers every one that can join the group.
     musicSpeakers: opts.music_speakers ?? (env.MUSIC_SPEAKERS ? env.MUSIC_SPEAKERS.split(',').map((s) => s.trim()) : []),
     port: Number(env.PORT || 8099),
     secret: String(opts.display_secret || env.DISPLAY_SECRET || 'dev-secret'),
@@ -76,17 +76,12 @@ const broadcastMusic = () => {
 }
 
 /**
- * Music Assistant only lists the speakers playing in a sync group, so the group and
- * every speaker ever seen in it are remembered: a speaker switched out of the group
- * (the panel included) keeps its switch on the music page.
+ * Music Assistant only lists the speakers playing in a sync group, so a panel
+ * switched out of its group would no longer find it. The group is remembered.
  */
 function rememberGroup() {
   const g = source.musicGroup
-  if (!g) return
-  // A different group starts a new list.
-  const seen = settings.get().musicGroup === g.entityId ? (settings.get().speakers ?? []) : []
-  const speakers = [...new Set([...seen, ...(g.attributes.group_members ?? [])])]
-  settings.update({ musicGroup: g.entityId, speakers })
+  if (g) settings.update({ musicGroup: g.entityId })
 }
 function onMusic() {
   rememberGroup()
@@ -121,11 +116,23 @@ function playerState({ state, attributes: a }) {
   }
 }
 
-/** The speakers offered for a group: the option's, or every one seen in it. */
+const GROUPING = 524288 // MediaPlayerEntityFeature.GROUPING
+// Music Assistant's own web player, one per browser that opened its UI.
+const isBrowserPlayer = (p) => /^Web \(/.test(p.attributes.friendly_name ?? '')
+
+/**
+ * The speakers offered for a group: the option's, or the panel, the group's
+ * members and every other Music Assistant player that can join a group (so a TV
+ * that isn't playing can be added), in Home Assistant's order so the switches
+ * don't move when flipped.
+ */
 function groupSpeakers(g) {
   if (config.musicSpeakers.length) return config.musicSpeakers
-  const seen = settings.get().musicGroup === g.entityId ? (settings.get().speakers ?? []) : []
-  return [...new Set([...seen, ...(g.attributes.group_members ?? [])])]
+  const members = g.attributes.group_members ?? []
+  const joinable = source.players
+    .filter((p) => members.includes(p.entityId) || (p.attributes.mass_player_type === 'player' && p.attributes.supported_features & GROUPING && !isBrowserPlayer(p)))
+    .map((p) => p.entityId)
+  return [...new Set([source.music?.entityId, ...joinable, ...members])].filter(Boolean)
 }
 
 /** What the music popover (the panel's player) and the music page (its group) show. */

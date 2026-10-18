@@ -221,9 +221,11 @@ CrowPanel 7.0" unless marked otherwise.
   `group_members`; a speaker taken out stays `idle`, not `off`, and drops off the
   list (idle, the group listed all three). So membership is not power:
   `media_player.join` on the group with `group_members: [x]` adds one, `unjoin` on
-  the speaker removes it. HA can't tell you the group's full speaker list, so the
-  add-on remembers every member it has seen (`/data/settings.json`), plus the group
-  itself, since a panel switched out of its group no longer appears in it.
+  the speaker removes it. HA can't tell you the group's full speaker list (MA's own
+  API, ws://<ma>:8095/ws, has `can_group_with` but needs an MA token), so the page
+  offers every MA player with the `GROUPING` feature (524288), minus MA's browser
+  players ("Web (...)"); Echos lack the feature. The group itself is remembered
+  (`/data/settings.json`): a panel switched out of it no longer appears in it.
 - **Music Assistant search is a service with a response:** `music_assistant.search`
   needs `config_entry_id` (from `config_entries/get`, domain `music_assistant`) and
   `return_response: true` over the WebSocket. It takes 5-8s here (Spotify + Plex),

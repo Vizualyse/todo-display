@@ -55,7 +55,7 @@ export function MusicPage({ music, compact, onBack }) {
       <button onClick={onBack} aria-label="Back to my list" className="grid size-11 shrink-0 place-items-center rounded-full border-[1.5px] border-blush-300 bg-pearl text-rosegold">
         <PrevIcon />
       </button>
-      <h2 className="truncate font-serif text-[26px] leading-none font-medium italic">{group?.name ?? 'Our music'}</h2>
+      <h2 className="truncate font-serif text-[26px] leading-none font-medium italic">Music</h2>
     </div>
   )
   const nowPlaying = (

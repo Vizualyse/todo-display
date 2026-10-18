@@ -12,7 +12,7 @@ export function createMockSource({ onChange, onMusic }) {
   let group = {
     entityId: 'media_player.mock_sync',
     state: 'paused',
-    attributes: { ...nowPlaying, friendly_name: 'Sync Players', volume_level: 0.5, group_members: Object.keys(speakers) },
+    attributes: { ...nowPlaying, friendly_name: 'Sync Players', volume_level: 0.5, group_members: Object.keys(speakers).slice(0, 2) },
   }
   const setMusic = (state, attributes = {}, target = 'panel') => {
     // Like a sync group: the panel follows the group's track and transport.
@@ -65,6 +65,15 @@ export function createMockSource({ onChange, onMusic }) {
     },
     get musicGroup() {
       return group
+    },
+    get players() {
+      return [
+        ...Object.entries(speakers).map(([entityId, name]) => ({ entityId, state: 'idle', attributes: { friendly_name: name, mass_player_type: 'player', supported_features: 8320575 } })),
+        // Not offered: an Echo can't sync, a browser tab is Music Assistant's web player.
+        { entityId: 'media_player.mock_echo', state: 'idle', attributes: { friendly_name: 'Kitchen Echo', mass_player_type: 'player', supported_features: 7796279 } },
+        { entityId: 'media_player.mock_web', state: 'idle', attributes: { friendly_name: 'Web (Chrome on Windows)', mass_player_type: 'player', supported_features: 8320575 } },
+        group,
+      ]
     },
     player(entityId) {
       if (entityId === group.entityId) return group

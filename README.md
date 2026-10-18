@@ -76,7 +76,7 @@ a track search. Tap a result to play it on the group straight away.
 | `jpeg_quality` | `80` | Tile quality; lower is smaller and faster to decode |
 | `music_player` | `""` | The panel's Music Assistant player; empty finds it by name ("CrowPanel") |
 | `music_group` | `""` | The Music Assistant sync group for the music page; empty finds the one the panel is in |
-| `music_speakers` | `[]` | Speakers offered on the music page; empty remembers every one seen in the group |
+| `music_speakers` | `[]` | Speakers offered on the music page; empty offers every Music Assistant player that can join a group |
 
 ## Flash the panel
 
