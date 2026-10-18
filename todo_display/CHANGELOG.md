@@ -3,6 +3,22 @@
 Bump `version` in `config.yaml` with every change: Home Assistant only rebuilds
 the add-on when the version changes.
 
+## 0.10.0
+
+- Music page: *Search & speakers* in the music popover (or *Music* in the heart
+  menu) opens a full-screen page for the Music Assistant sync group the panel is
+  in (e.g. *Sync Players*): its now playing, previous / play-pause / next and the
+  group's volume, a switch per speaker to add it to the group or take it out
+  (`media_player.join` / `unjoin`), and a track search with the on-screen
+  keyboard. Results scroll and show album art; tapping one plays it on the group
+  straight away (Music Assistant `search` / `play_media`, `enqueue: play`).
+- Music Assistant only lists the speakers playing in a group, so the add-on
+  remembers the group and every speaker it has seen in it (in
+  `/data/settings.json`); a speaker switched out keeps its switch. New options
+  `music_group` and `music_speakers` set them explicitly.
+- Search thumbnails are fetched and shrunk to 96px by the add-on; only art URLs
+  from the latest searches are fetched.
+
 ## 0.9.0
 
 - One volume for everything: the heart menu's slider (and the one in the music

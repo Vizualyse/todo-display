@@ -1,4 +1,4 @@
-import { MusicIcon, PauseIcon, PlayIcon, SkipNextIcon, SkipPrevIcon } from '../ui/icons.jsx'
+import { MusicIcon, NextIcon, PauseIcon, PlayIcon, SkipNextIcon, SkipPrevIcon } from '../ui/icons.jsx'
 
 /** A music note in a circle, left of the heart. Opens the now-playing popover. */
 export function MusicButton({ open, playing, onClick }) {
@@ -19,9 +19,10 @@ export function MusicButton({ open, playing, onClick }) {
 /**
  * Now playing on the panel's Music Assistant player (Spotify Connect included), with
  * transport controls. The slider is the panel's volume, the same one as in the heart
- * menu (it scales every sound); it is sent when the finger lifts.
+ * menu (it scales every sound); it is sent when the finger lifts. The last row opens
+ * the music page (search and the speaker group).
  */
-export function MusicMenu({ music, sound, onClose }) {
+export function MusicMenu({ music, sound, onClose, onOpenPage }) {
   const round = 'grid place-items-center rounded-full'
   const percent = sound.volume
 
@@ -68,6 +69,14 @@ export function MusicMenu({ music, sound, onClose }) {
             style={{ '--fill': `${percent}%` }}
           />
         </label>
+        <div className="mt-1 border-t border-blush-200 pt-1">
+          <button onClick={onOpenPage} className="flex h-11 w-full items-center gap-3 px-1 text-left font-serif text-[18px] text-plum">
+            <span className="flex-1">{music.group ? 'Search & speakers' : 'Search for a song'}</span>
+            <span className="text-rosegold">
+              <NextIcon />
+            </span>
+          </button>
+        </div>
       </div>
     </>
   )

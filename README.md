@@ -49,6 +49,11 @@ it, or the rest of the card to edit its title and due date. The round filter but
 *To do / Done / All* picks which lists are shown (only *Married Life* by default). Lists without due
 date support, like the shopping list, get no date choice.
 
+With Music Assistant set up, a note button left of the heart shows what the panel is playing.
+*Search & speakers* there (or *Music* in the heart menu) opens the music page: the panel's sync
+group's now playing and controls, a switch per speaker to add it to the group or take it out, and
+a track search. Tap a result to play it on the group straight away.
+
 - `http://localhost:8099/` — the page as a normal web page
 - `http://localhost:8099/preview` — a browser stand-in for the panel: same protocol, click to "touch",
   shows touch→pixels latency (tick *outline tiles* to see what each update sends)
@@ -69,6 +74,9 @@ date support, like the shopping list, get no date choice.
 | `orientation` | `portrait` | `portrait` or `landscape` |
 | `rotation` | `90` | `90` or `270`: which way the panel is mounted in portrait |
 | `jpeg_quality` | `80` | Tile quality; lower is smaller and faster to decode |
+| `music_player` | `""` | The panel's Music Assistant player; empty finds it by name ("CrowPanel") |
+| `music_group` | `""` | The Music Assistant sync group for the music page; empty finds the one the panel is in |
+| `music_speakers` | `[]` | Speakers offered on the music page; empty remembers every one seen in the group |
 
 ## Flash the panel
 

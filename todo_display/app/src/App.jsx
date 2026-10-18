@@ -11,6 +11,7 @@ import { MenuButton } from './components/menu/MenuButton.jsx'
 import { MusicButton, MusicMenu } from './components/menu/MusicMenu.jsx'
 import { TabMenu } from './components/menu/TabMenu.jsx'
 import { tabTitle } from './components/menu/tabs.js'
+import { MusicPage } from './components/music/MusicPage.jsx'
 import { useListSelection } from './hooks/useListSelection.js'
 import { useMinuteClock } from './hooks/useMinuteClock.js'
 import { useMusic } from './hooks/useMusic.js'
@@ -27,7 +28,7 @@ export default function App() {
   // Everything below, counts and summary included, only sees the lists that are ticked.
   const todos = allTodos.filter(shown.includes)
   const [filter, setFilter] = useState('open')
-  const [tab, setTab] = useState('list') // 'list' | 'add' | 'edit'
+  const [tab, setTab] = useState('list') // 'list' | 'add' | 'edit' | 'music'
   const [editingId, setEditingId] = useState(null)
   const [popover, setPopover] = useState(null) // null | 'menu' | 'music'
   const menuOpen = popover === 'menu'
@@ -40,6 +41,10 @@ export default function App() {
   useEffect(() => {
     if (tab === 'edit' && !editing) setTab('list')
   }, [tab, editing])
+  // Likewise if the music player goes away.
+  useEffect(() => {
+    if (tab === 'music' && !music.available) setTab('list')
+  }, [tab, music.available])
   const edit = (id) => {
     setEditingId(id)
     setTab('edit')
@@ -73,7 +78,17 @@ export default function App() {
       {music.available && (
         <MusicButton open={popover === 'music'} playing={music.playing} onClick={() => setPopover(popover === 'music' ? null : 'music')} />
       )}
-      {popover === 'music' && music.available && <MusicMenu music={music} sound={sound} onClose={() => setPopover(null)} />}
+      {popover === 'music' && music.available && (
+        <MusicMenu
+          music={music}
+          sound={sound}
+          onClose={() => setPopover(null)}
+          onOpenPage={() => {
+            setTab('music')
+            setPopover(null)
+          }}
+        />
+      )}
       <MenuButton open={menuOpen} onClick={() => setMenuOpen(!menuOpen)} />
       {menuOpen && (
         <TabMenu
@@ -84,10 +99,21 @@ export default function App() {
           }}
           onClose={() => setMenuOpen(false)}
           sound={sound}
+          music={music.available}
         />
       )}
     </>
   )
+
+  // The music page has the whole screen, with the menu buttons where they always are.
+  if (tab === 'music') {
+    return (
+      <Shell className={compact ? 'grid grid-cols-[280px_minmax(0,1fr)] gap-7' : 'flex flex-col gap-4'}>
+        <MusicPage music={music} compact={compact} onBack={() => showList(filter)} />
+        {menu}
+      </Shell>
+    )
+  }
 
   if (orientation === 'landscape') {
     return (

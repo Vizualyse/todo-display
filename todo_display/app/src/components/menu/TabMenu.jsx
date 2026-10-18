@@ -1,8 +1,10 @@
 import { DISPLAY } from '../../config/params.js'
-import { ListIcon, MutedIcon, PlusIcon, SoundIcon } from '../ui/icons.jsx'
+import { ListIcon, MusicIcon, MutedIcon, PlusIcon, SoundIcon } from '../ui/icons.jsx'
 import { TABS } from './tabs.js'
 
-export function TabMenu({ value, onChange, onClose, sound }) {
+const TAB_ICONS = { list: <ListIcon />, add: <PlusIcon />, music: <MusicIcon className="size-4" /> }
+
+export function TabMenu({ value, onChange, onClose, sound, music }) {
   const { muted, toggleMuted, volume, setVolume, commitVolume } = sound
   return (
     <>
@@ -11,7 +13,7 @@ export function TabMenu({ value, onChange, onClose, sound }) {
       <div role="menu" className="absolute top-[82px] right-7 z-20 w-60 rounded-[22px] border border-blush-200 bg-pearl p-2">
         <span aria-hidden className="absolute -top-[7px] right-[15px] size-3 rotate-45 border-t border-l border-blush-200 bg-pearl" />
         <p className="px-3 pt-1.5 pb-2 text-[11px] font-medium tracking-[0.22em] text-plum-soft uppercase">Show</p>
-        {TABS.map((t) => {
+        {TABS.filter((t) => music || !t.music).map((t) => {
           const active = t.id === value
           return (
             <button
@@ -23,7 +25,7 @@ export function TabMenu({ value, onChange, onClose, sound }) {
               }`}
             >
               <span className={`grid size-7 place-items-center rounded-full ${active ? 'bg-rosegold text-pearl' : 'bg-blush-100 text-rosegold'}`}>
-                {t.id === 'list' ? <ListIcon /> : <PlusIcon />}
+                {TAB_ICONS[t.id]}
               </span>
               {t.label}
             </button>

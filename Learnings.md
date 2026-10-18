@@ -207,6 +207,24 @@ CrowPanel 7.0" unless marked otherwise.
   entity's `supported_features`: `SET_DUE_DATE_ON_ITEM` (16) or
   `SET_DUE_DATETIME_ON_ITEM` (32). The server exposes it as `dueDates` on
   `/api/lists`, and the form hides the date row when it's false.
+- **Music Assistant sync groups have dynamic members.** The group's media player
+  (`mass_player_type: group`) lists only the speakers playing in it *now* in
+  `group_members`; a speaker taken out stays `idle`, not `off`, and drops off the
+  list (idle, the group listed all three). So membership is not power:
+  `media_player.join` on the group with `group_members: [x]` adds one, `unjoin` on
+  the speaker removes it. HA can't tell you the group's full speaker list, so the
+  add-on remembers every member it has seen (`/data/settings.json`), plus the group
+  itself, since a panel switched out of its group no longer appears in it.
+- **Music Assistant search is a service with a response:** `music_assistant.search`
+  needs `config_entry_id` (from `config_entries/get`, domain `music_assistant`) and
+  `return_response: true` over the WebSocket. It takes 5-8s here (Spotify + Plex),
+  so show a "Searching" state. Track `image` is a Spotify CDN or MA `imageproxy`
+  URL (LAN); the add-on fetches and shrinks it, the panel's Chromium never goes
+  online. Play with `music_assistant.play_media` (`enqueue: play`). A playing
+  track's `media_content_id` can be a provider uri while search returned a
+  `library://` one, so match the current track by title and artist too.
+- **Express 5 has no inline regex route params** (`/:command(a|b)` throws at
+  startup). Look the param up and call `next()` for anything else.
 - **Ingress requests come from `172.30.32.2`** and skip the display secret.
   Everything else needs `?key=`, `X-Display-Key` or the `td_key` cookie.
 - **Ingress panels are admin-only by default.** `panel_admin: false` in

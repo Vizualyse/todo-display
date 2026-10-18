@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
+import { usePhysicalKeyboard } from '../../hooks/usePhysicalKeyboard.js'
 import { shortDate } from '../../lib/dates.js'
 import { DEFAULT_ALARM, alarmSummary } from '../../lib/alarms.js'
 import { DUE_CHOICES, dueValue, initialDue } from '../../lib/todos.js'
@@ -171,22 +172,4 @@ export function TodoForm({ todo, lists, defaultListId, dueDates: todoDueDates, d
       </div>
     </div>
   )
-}
-
-/** For the browser/ingress view; the handlers are read fresh on every key press. */
-function usePhysicalKeyboard(handlers) {
-  const keys = useRef(null)
-  keys.current = handlers
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.ctrlKey || e.metaKey || e.altKey) return
-      if (e.key === 'Enter') keys.current.submit()
-      else if (e.key === 'Backspace') keys.current.backspace()
-      else if (e.key.length === 1) keys.current.type(e.key)
-      else return
-      e.preventDefault()
-    }
-    addEventListener('keydown', onKey)
-    return () => removeEventListener('keydown', onKey)
-  }, [])
 }

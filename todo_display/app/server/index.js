@@ -39,6 +39,10 @@ function loadConfig() {
     todoEntities: opts.todo_entities ?? (env.TODO_ENTITIES ? env.TODO_ENTITIES.split(',').map((s) => s.trim()) : []),
     // Empty finds the panel's Music Assistant player by name.
     musicPlayer: opts.music_player || env.MUSIC_PLAYER || '',
+    // Empty finds the Music Assistant group the panel's player belongs to.
+    musicGroup: opts.music_group || env.MUSIC_GROUP || '',
+    // Speakers offered on the music page; empty remembers every one seen in the group.
+    musicSpeakers: opts.music_speakers ?? (env.MUSIC_SPEAKERS ? env.MUSIC_SPEAKERS.split(',').map((s) => s.trim()) : []),
     port: Number(env.PORT || 8099),
     secret: String(opts.display_secret || env.DISPLAY_SECRET || 'dev-secret'),
     orientation: opts.orientation || env.ORIENTATION || 'portrait',
@@ -56,6 +60,8 @@ if (config.secret === 'change-me' || config.secret === 'dev-secret') {
 
 // --- Todo source -----------------------------------------------------------
 
+const settings = createSettings({ file: process.env.SETTINGS_FILE || '/data/settings.json', log })
+
 const subscribers = new Set()
 const broadcast = () => {
   for (const res of subscribers) res.write('data: changed\n\n')
@@ -69,36 +75,106 @@ const broadcastMusic = () => {
   for (const res of subscribers) res.write('event: music\ndata: changed\n\n')
 }
 
+/**
+ * Music Assistant only lists the speakers playing in a sync group, so the group and
+ * every speaker ever seen in it are remembered: a speaker switched out of the group
+ * (the panel included) keeps its switch on the music page.
+ */
+function rememberGroup() {
+  const g = source.musicGroup
+  if (!g) return
+  // A different group starts a new list.
+  const seen = settings.get().musicGroup === g.entityId ? (settings.get().speakers ?? []) : []
+  const speakers = [...new Set([...seen, ...(g.attributes.group_members ?? [])])]
+  settings.update({ musicGroup: g.entityId, speakers })
+}
+function onMusic() {
+  rememberGroup()
+  broadcastMusic()
+}
+
 const source = config.ha
   ? createHomeAssistantSource({
       ...config.ha,
       entities: config.todoEntities,
       musicPlayer: config.musicPlayer,
+      musicGroup: () => config.musicGroup || settings.get().musicGroup,
       log,
       onChange: broadcast,
-      onMusic: () => broadcastMusic(),
+      onMusic,
     })
-  : createMockSource({ onChange: broadcast, onMusic: () => broadcastMusic() })
+  : createMockSource({ onChange: broadcast, onMusic })
 if (!config.ha) log('No Home Assistant connection configured, using mock todos')
+rememberGroup()
 
-/** What the music popover shows; `art` changes with the picture, so it doubles as a cache key. */
-function musicState() {
-  const m = source.music
-  if (!m) return { available: false }
-  const a = m.attributes
+/** Now playing on one player; `art` changes with the picture, so it doubles as a cache key. */
+function playerState({ state, attributes: a }) {
   const picture = a.entity_picture ?? ''
   return {
-    available: m.state !== 'unavailable',
-    playing: m.state === 'playing',
+    playing: state === 'playing',
     title: a.media_title ?? null,
     artist: a.media_artist ?? null,
     album: a.media_album_name ?? null,
+    uri: a.media_content_id ?? null,
     volume: typeof a.volume_level === 'number' ? a.volume_level : null,
     art: picture ? crypto.createHash('sha1').update(picture).digest('hex').slice(0, 12) : null,
   }
 }
 
-const settings = createSettings({ file: process.env.SETTINGS_FILE || '/data/settings.json', log })
+/** The speakers offered for a group: the option's, or every one seen in it. */
+function groupSpeakers(g) {
+  if (config.musicSpeakers.length) return config.musicSpeakers
+  const seen = settings.get().musicGroup === g.entityId ? (settings.get().speakers ?? []) : []
+  return [...new Set([...seen, ...(g.attributes.group_members ?? [])])]
+}
+
+/** What the music popover (the panel's player) and the music page (its group) show. */
+function musicState() {
+  const m = source.music
+  if (!m) return { available: false }
+  const g = source.musicGroup
+  return {
+    available: m.state !== 'unavailable',
+    ...playerState(m),
+    group: g && {
+      name: g.attributes.friendly_name ?? g.entityId,
+      ...playerState(g),
+      members: groupSpeakers(g).map((id) => {
+        const p = source.player(id)
+        return {
+          id,
+          name: p?.attributes.friendly_name ?? id,
+          on: (g.attributes.group_members ?? []).includes(id),
+          available: Boolean(p) && p.state !== 'unavailable',
+        }
+      }),
+    },
+  }
+}
+
+/**
+ * Track art from the latest searches, by uri. Only these URLs are fetched, so the
+ * thumbnail route can't be pointed anywhere else. Thumbnails are shrunk to what the
+ * page shows, so the panel decodes a few KB per row.
+ */
+const searchArt = new Map() // uri -> image URL
+const thumbs = new Map() // uri -> jpeg
+const remember = (map, key, value, max) => {
+  if (map.size >= max) map.delete(map.keys().next().value)
+  map.set(key, value)
+}
+const trackView = (t) => {
+  const image = t.image || t.album?.image || null
+  if (image && /^https?:\/\//.test(image)) remember(searchArt, t.uri, image, 500)
+  return {
+    uri: t.uri,
+    title: t.version ? `${t.name} (${t.version})` : t.name,
+    artist: (t.artists ?? []).map((a) => a.name).join(', ') || null,
+    album: t.album?.name ?? null,
+    art: searchArt.has(t.uri),
+  }
+}
+
 const broadcastSettings = () => {
   for (const res of subscribers) res.write('event: settings\ndata: changed\n\n')
 }
@@ -227,7 +303,11 @@ app.post('/api/todos/:id/toggle', async (req, res) => {
   }
 })
 
-app.get('/api/settings', (req, res) => res.json(settings.get()))
+const pageSettings = () => {
+  const { muted, volume } = settings.get()
+  return { muted, volume }
+}
+app.get('/api/settings', (req, res) => res.json(pageSettings()))
 
 // Body: { muted?, volume? (0-1) }. The volume goes to the panel, which reports back.
 app.post('/api/settings', (req, res) => {
@@ -237,45 +317,114 @@ app.post('/api/settings', (req, res) => {
   const changes = { ...(muted !== undefined && { muted }), ...(volume !== undefined && { volume }) }
   if (settings.update(changes)) broadcastSettings()
   if (volume !== undefined) stream?.setVolume(volume)
-  res.json(settings.get())
+  res.json(pageSettings())
 })
 
 const MUSIC_COMMANDS = { play_pause: 'media_play_pause', next: 'media_next_track', previous: 'media_previous_track' }
+// The popover controls the panel's player; the music page controls its group.
+const TARGETS = { '/api/music': 'panel', '/api/music/group': 'group' }
 
 app.get('/api/music', (req, res) => res.json(musicState()))
 
-app.get('/api/music/art', async (req, res) => {
-  try {
-    const art = await source.musicArt()
-    if (!art) return res.status(404).end()
-    // The URL carries the art key, so a new picture is a new URL.
-    res.set('Cache-Control', 'max-age=86400').type(art.type).send(art.body)
-  } catch (err) {
-    log(`music art failed: ${err.message}`)
-    res.status(502).end()
-  }
-})
+for (const [base, target] of Object.entries(TARGETS)) {
+  app.get(`${base}/art`, async (req, res) => {
+    try {
+      const art = await source.musicArt(target)
+      if (!art) return res.status(404).end()
+      // The URL carries the art key, so a new picture is a new URL.
+      res.set('Cache-Control', 'max-age=86400').type(art.type).send(art.body)
+    } catch (err) {
+      log(`music art failed: ${err.message}`)
+      res.status(502).end()
+    }
+  })
 
-app.post('/api/music/volume', async (req, res) => {
-  const volume = Number(req.body?.volume)
-  if (!(volume >= 0 && volume <= 1)) return res.status(400).json({ error: 'volume must be 0-1' })
+  app.post(`${base}/volume`, async (req, res) => {
+    const volume = Number(req.body?.volume)
+    if (!(volume >= 0 && volume <= 1)) return res.status(400).json({ error: 'volume must be 0-1' })
+    try {
+      await source.musicCommand('volume_set', { volume_level: volume }, target)
+      res.json({ ok: true })
+    } catch (err) {
+      log(`music volume failed: ${err.message}`)
+      res.status(502).json({ error: err.message })
+    }
+  })
+
+  app.post(`${base}/:command`, async (req, res, next) => {
+    // Not a transport command: search, play and speaker are routes of their own.
+    if (!Object.hasOwn(MUSIC_COMMANDS, req.params.command)) return next()
+    try {
+      await source.musicCommand(MUSIC_COMMANDS[req.params.command], {}, target)
+      res.json({ ok: true })
+    } catch (err) {
+      log(`music ${req.params.command} failed: ${err.message}`)
+      broadcastMusic()
+      res.status(502).json({ error: err.message })
+    }
+  })
+}
+
+// Body: { query }. Tracks only.
+app.post('/api/music/search', async (req, res) => {
+  const query = typeof req.body?.query === 'string' ? req.body.query.trim() : ''
+  if (!query || query.length > 100) return res.status(400).json({ error: 'query required' })
   try {
-    await source.musicCommand('volume_set', { volume_level: volume })
-    res.json({ ok: true })
+    const tracks = await source.musicSearch(query)
+    res.json({ tracks: tracks.filter((t) => t?.uri && t.name).map(trackView) })
   } catch (err) {
-    log(`music volume failed: ${err.message}`)
+    log(`music search failed: ${err.message}`)
     res.status(502).json({ error: err.message })
   }
 })
 
-app.post('/api/music/:command', async (req, res) => {
-  const service = MUSIC_COMMANDS[req.params.command]
-  if (!service) return res.status(404).json({ error: 'unknown command' })
+app.get('/api/music/thumb', async (req, res) => {
+  const uri = String(req.query.uri ?? '')
   try {
-    await source.musicCommand(service)
+    let jpeg = thumbs.get(uri)
+    if (!jpeg) {
+      const url = searchArt.get(uri)
+      if (!url) return res.status(404).end()
+      const got = await fetch(url, { signal: AbortSignal.timeout(8000) })
+      if (!got.ok) throw new Error(`HTTP ${got.status}`)
+      jpeg = await sharp(Buffer.from(await got.arrayBuffer()))
+        .resize(96, 96, { fit: 'cover' })
+        .flatten({ background: '#f6e4e0' })
+        .jpeg({ quality: 80 })
+        .toBuffer()
+      remember(thumbs, uri, jpeg, 300)
+    }
+    res.set('Cache-Control', 'max-age=86400').type('image/jpeg').send(jpeg)
+  } catch (err) {
+    log(`music thumb failed: ${err.message}`)
+    res.status(502).end()
+  }
+})
+
+// Body: { uri }. Plays the track now on the group, or on the panel without one.
+app.post('/api/music/play', async (req, res) => {
+  const uri = typeof req.body?.uri === 'string' ? req.body.uri : ''
+  if (!uri || uri.length > 500) return res.status(400).json({ error: 'uri required' })
+  try {
+    await source.musicPlay(uri, source.musicGroup ? 'group' : 'panel')
     res.json({ ok: true })
   } catch (err) {
-    log(`music ${req.params.command} failed: ${err.message}`)
+    log(`music play failed: ${err.message}`)
+    res.status(502).json({ error: err.message })
+  }
+})
+
+// Body: { id, on }. Only the group's own speakers can be switched.
+app.post('/api/music/speaker', async (req, res) => {
+  const { id, on } = req.body ?? {}
+  if (typeof on !== 'boolean') return res.status(400).json({ error: 'on must be true/false' })
+  const group = source.musicGroup
+  if (!group || !groupSpeakers(group).includes(id)) return res.status(404).json({ error: 'not in the group' })
+  try {
+    await source.setSpeaker(id, on)
+    res.json({ ok: true })
+  } catch (err) {
+    log(`speaker ${id} failed: ${err.message}`)
     broadcastMusic()
     res.status(502).json({ error: err.message })
   }
