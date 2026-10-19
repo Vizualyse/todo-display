@@ -234,6 +234,14 @@ CrowPanel 7.0" unless marked otherwise.
   online. Play with `music_assistant.play_media` (`enqueue: play`). A playing
   track's `media_content_id` can be a provider uri while search returned a
   `library://` one, so match the current track by title and artist too.
+- **Weather forecasts aren't attributes any more.** Get them with
+  `weather.get_forecasts` (`type: hourly|daily`, `return_response: true`); the
+  entity's `supported_features` says which exist (daily 1, hourly 2, twice-daily 4).
+  Met.no (*Forecast Home*, `weather.forecast_home`) gives 48 hourly entries from
+  the *next* full hour, so the current hour is only in the entity's state. It has
+  **no `precipitation_probability`**, only `precipitation` in mm (0.1mm steps), so
+  "will it rain" comes from amounts: an hour is wet at >= 0.1mm, or at a 50% chance
+  where a provider gives one.
 - **Express 5 has no inline regex route params** (`/:command(a|b)` throws at
   startup). Look the param up and call `next()` for anything else.
 - **Ingress requests come from `172.30.32.2`** and skip the display secret.
@@ -262,7 +270,9 @@ CrowPanel 7.0" unless marked otherwise.
   watch without rebooting, open with `dtr=False, rts=False`. Set
   `PYTHONIOENCODING=utf-8` (logs contain Unicode).
 - Long multi-file bash heredocs failed to parse here. Use the Write tool for file
-  contents.
+  contents. Scripted edits through a heredoc also mangle escapes: a `\n` in a JS
+  string reached the file as a real newline, and `\\.` in YAML didn't match. Use
+  the Edit tool for anything with backslashes.
 - Windows Firewall: the Wi-Fi profile is *Public*, so port 8099 needed an inbound
   rule for local testing.
 

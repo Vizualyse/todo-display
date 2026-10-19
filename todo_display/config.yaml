@@ -1,5 +1,5 @@
 name: ToDo Display
-version: "0.10.1"
+version: "0.11.0"
 slug: todo_display
 description: Todo list rendered server-side and streamed as tiles to a CrowPanel display
 url: https://github.com/Vizualyse/todo-display
@@ -34,6 +34,8 @@ options:
   music_group: ""
   # Speakers offered on the music page; empty offers every one that can join the group.
   music_speakers: []
+  # Empty uses the first weather entity (Met.no's "Forecast Home" by default).
+  weather_entity: ""
 schema:
   display_secret: password
   todo_entities:
@@ -45,3 +47,4 @@ schema:
   music_group: "match(^(media_player\\.[a-z0-9_]+)?$)"
   music_speakers:
     - "match(^media_player\\.[a-z0-9_]+$)"
+  weather_entity: "match(^(weather\\.[a-z0-9_]+)?$)"

@@ -10,6 +10,7 @@ import { createMockSource } from './mock.js'
 import { createSettings } from './settings.js'
 import { createRenderer, HEIGHT, WIDTH } from './renderer.js'
 import { attachTileStream } from './stream.js'
+import { createWeather } from './weather.js'
 
 const log = (msg) => console.log(`[todo] ${msg}`)
 const serverDir = path.dirname(fileURLToPath(import.meta.url))
@@ -43,6 +44,8 @@ function loadConfig() {
     musicGroup: opts.music_group || env.MUSIC_GROUP || '',
     // Speakers offered on the music page; empty offers every one that can join the group.
     musicSpeakers: opts.music_speakers ?? (env.MUSIC_SPEAKERS ? env.MUSIC_SPEAKERS.split(',').map((s) => s.trim()) : []),
+    // Empty uses the first weather entity.
+    weatherEntity: opts.weather_entity || env.WEATHER_ENTITY || '',
     port: Number(env.PORT || 8099),
     secret: String(opts.display_secret || env.DISPLAY_SECRET || 'dev-secret'),
     orientation: opts.orientation || env.ORIENTATION || 'portrait',
@@ -94,13 +97,24 @@ const source = config.ha
       entities: config.todoEntities,
       musicPlayer: config.musicPlayer,
       musicGroup: () => config.musicGroup || settings.get().musicGroup,
+      weatherEntity: config.weatherEntity,
       log,
       onChange: broadcast,
       onMusic,
+      onWeather: () => weather.entityChanged(),
     })
   : createMockSource({ onChange: broadcast, onMusic })
 if (!config.ha) log('No Home Assistant connection configured, using mock todos')
 rememberGroup()
+
+const weather = createWeather({
+  source,
+  log,
+  onChange: () => {
+    for (const res of subscribers) res.write('event: weather\ndata: changed\n\n')
+  },
+})
+weather.entityChanged()
 
 /** Now playing on one player; `art` changes with the picture, so it doubles as a cache key. */
 function playerState({ state, attributes: a }) {
@@ -332,6 +346,7 @@ const MUSIC_COMMANDS = { play_pause: 'media_play_pause', next: 'media_next_track
 const TARGETS = { '/api/music': 'panel', '/api/music/group': 'group' }
 
 app.get('/api/music', (req, res) => res.json(musicState()))
+app.get('/api/weather', (req, res) => res.json(weather.state))
 
 for (const [base, target] of Object.entries(TARGETS)) {
   app.get(`${base}/art`, async (req, res) => {

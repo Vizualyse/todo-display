@@ -59,6 +59,31 @@ export function createMockSource({ onChange, onMusic }) {
 
   let nextId = todos.length
 
+  // Dry this morning, rain this afternoon and early tomorrow, by the hour of the day.
+  const rainAt = (day, h) => (day === 0 && h >= 15 && h < 18 ? [0.4, 1.2, 0.3][h - 15] : day === 1 && h >= 7 && h < 9 ? 0.6 : 0)
+  const hourly = () => {
+    const start = new Date()
+    start.setHours(0, 0, 0, 0)
+    return Array.from({ length: 48 }, (_, i) => {
+      const t = new Date(start.getTime() + i * 3_600_000)
+      const mm = rainAt(Math.floor(i / 24), t.getHours())
+      const h = t.getHours()
+      return {
+        datetime: t.toISOString(),
+        condition: mm ? 'rainy' : h < 7 || h >= 20 ? 'clear-night' : h < 12 ? 'sunny' : 'partlycloudy',
+        temperature: Math.round((9 + 5 * Math.sin(((h - 9) / 24) * 2 * Math.PI)) * 10) / 10,
+        precipitation: mm,
+      }
+    })
+  }
+  const daily = () =>
+    [['partlycloudy', 14, 8, 1.9], ['rainy', 12, 7, 4.6], ['sunny', 15, 6, 0], ['cloudy', 13, 9, 0.2], ['windy', 11, 7, 0]].map(([condition, high, low, mm], i) => {
+      const d = new Date()
+      d.setDate(d.getDate() + i)
+      d.setHours(12, 0, 0, 0)
+      return { datetime: d.toISOString(), condition, temperature: high, templow: low, precipitation: mm }
+    })
+
   return {
     get music() {
       return music
@@ -101,6 +126,12 @@ export function createMockSource({ onChange, onMusic }) {
     async setSpeaker(entityId, on) {
       const members = group.attributes.group_members.filter((id) => id !== entityId)
       setMusic(group.state, { group_members: on ? [...members, entityId] : members }, 'group')
+    },
+    get weather() {
+      return { entityId: 'weather.mock_home', state: 'partlycloudy', attributes: { temperature: 12.4, temperature_unit: '°C', humidity: 78, wind_speed: 14.4, wind_speed_unit: 'km/h', supported_features: 3 } }
+    },
+    async weatherForecast(type) {
+      return type === 'hourly' ? hourly() : daily()
     },
     get lists() {
       // Like local_todo, the dated lists take times too.

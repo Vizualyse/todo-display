@@ -23,7 +23,7 @@ one update is in flight per panel, and changes made meanwhile are coalesced.
 | `repository.yaml` | Makes this repo installable as a Home Assistant add-on repository |
 | `todo_display/` | The add-on: `config.yaml`, `Dockerfile`, and the app |
 | `todo_display/app/src/` | React + Tailwind page: `App.jsx` (tabs, layout per orientation) |
-| `todo_display/app/src/components/` | UI by area: `layout/`, `menu/`, `list/`, `form/` (keyboard, calendar), shared `ui/` |
+| `todo_display/app/src/components/` | UI by area: `layout/`, `menu/`, `list/`, `form/` (keyboard, calendar), `music/`, `weather/`, shared `ui/` |
 | `todo_display/app/src/hooks/`, `lib/` | Data and clock hooks, drag-scroll; date and todo helpers (no React) |
 | `todo_display/app/src/display/bridge.js` | Hooks the page up to the renderer (`__frameDirty`, `__scrollState`) |
 | `todo_display/app/server/` | Express server, Chromium renderer, tile streamer, `/preview` |
@@ -43,6 +43,9 @@ HA_URL=http://homeassistant.local:8123 HA_TOKEN_FILE=../../.ha-token DISPLAY_SEC
 ```
 
 Inside the add-on, todos come from Home Assistant automatically (Supervisor API, no token needed).
+With a weather entity (Met.no's *Forecast Home* by default), the divider under the date shows the
+weather and whether you need a brolly (*Brolly needed at 3pm* / *No brolly today*; from 8pm, for
+tomorrow). Tap it for the next hours and days.
 Tap the heart in the top right corner to switch between the list and the *Add a todo* tab, which has
 its own on-screen keyboard (a physical keyboard also works in a browser). Tap a todo's circle to tick
 it, or the rest of the card to edit its title and due date. The round filter button beside
@@ -77,6 +80,7 @@ a track search. Tap a result to play it on the group straight away.
 | `music_player` | `""` | The panel's Music Assistant player; empty finds it by name ("CrowPanel") |
 | `music_group` | `""` | The Music Assistant sync group for the music page; empty finds the one the panel is in |
 | `music_speakers` | `[]` | Speakers offered on the music page; empty offers every Music Assistant player that can join a group |
+| `weather_entity` | `""` | Weather for the brolly chip; empty uses the first `weather.*` entity |
 
 ## Flash the panel
 

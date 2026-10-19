@@ -12,12 +12,14 @@ import { MusicButton, MusicMenu } from './components/menu/MusicMenu.jsx'
 import { TabMenu } from './components/menu/TabMenu.jsx'
 import { tabTitle } from './components/menu/tabs.js'
 import { MusicPage } from './components/music/MusicPage.jsx'
+import { WeatherChip, WeatherMenu } from './components/weather/WeatherMenu.jsx'
 import { useListSelection } from './hooks/useListSelection.js'
 import { useMinuteClock } from './hooks/useMinuteClock.js'
 import { useMusic } from './hooks/useMusic.js'
 import { useOrientation } from './hooks/useOrientation.js'
 import { useTapSound } from './hooks/useTapSound.js'
 import { useTodos } from './hooks/useTodos.js'
+import { useWeather } from './hooks/useWeather.js'
 import { FILTERS, byUpcoming } from './lib/todos.js'
 
 export default function App() {
@@ -30,11 +32,12 @@ export default function App() {
   const [filter, setFilter] = useState('open')
   const [tab, setTab] = useState('list') // 'list' | 'add' | 'edit' | 'music'
   const [editingId, setEditingId] = useState(null)
-  const [popover, setPopover] = useState(null) // null | 'menu' | 'music'
+  const [popover, setPopover] = useState(null) // null | 'menu' | 'music' | 'weather'
   const menuOpen = popover === 'menu'
   const setMenuOpen = (open) => setPopover(open ? 'menu' : null)
   const sound = useTapSound()
   const music = useMusic()
+  const weather = useWeather()
 
   // Back to the list if the todo being edited disappears (e.g. removed in HA).
   const editing = tab === 'edit' ? todos.find((t) => t.id === editingId) : null
@@ -57,6 +60,15 @@ export default function App() {
   const visible = todos.filter(FILTERS.find((f) => f.id === filter).test).sort(byUpcoming)
   const compact = orientation === 'landscape'
   const header = <Header now={now} clearMenu={!compact} wide={music.available} />
+  // The weather sits in the flourish under the date, once Home Assistant has a weather entity.
+  // Landscape's sidebar is narrow, so there the chip takes the whole line.
+  const flourish = (
+    <Flourish bare={compact && weather.available}>
+      {weather.available && (
+        <WeatherChip weather={weather} now={now} open={popover === 'weather'} compact={compact} onClick={() => setPopover(popover === 'weather' ? null : 'weather')} />
+      )}
+    </Flourish>
+  )
   const summary = <Summary todos={todos} />
   const filters = (
     <div className="flex gap-2">
@@ -89,6 +101,7 @@ export default function App() {
           }}
         />
       )}
+      {popover === 'weather' && weather.available && <WeatherMenu weather={weather} now={now} compact={compact} onClose={() => setPopover(null)} />}
       <MenuButton open={menuOpen} onClick={() => setMenuOpen(!menuOpen)} />
       {menuOpen && (
         <TabMenu
@@ -120,7 +133,7 @@ export default function App() {
       <Shell className="grid grid-cols-[280px_minmax(0,1fr)] gap-7">
         <aside className="flex min-h-0 flex-col gap-5">
           {header}
-          <Flourish />
+          {flourish}
           {summary}
           <div className="mt-auto">{filters}</div>
         </aside>
@@ -139,7 +152,7 @@ export default function App() {
   return (
     <Shell className="flex flex-col gap-5">
       {header}
-      <Flourish />
+      {flourish}
       {tab === 'list' ? (
         <>
           {summary}

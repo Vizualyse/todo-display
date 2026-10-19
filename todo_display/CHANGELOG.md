@@ -3,6 +3,19 @@
 Bump `version` in `config.yaml` with every change: Home Assistant only rebuilds
 the add-on when the version changes.
 
+## 0.11.0
+
+- Weather: a chip in the divider under the date shows the weather now, the
+  temperature and whether you need a brolly: *Brolly needed at 3pm* (or *now*),
+  else *No brolly today*. From 8pm it looks at tomorrow (6am-10pm) instead
+  (*Brolly needed tomorrow 7am* / *No brolly tomorrow*).
+- Tap it for the forecast: conditions, today's high and low, wind, when the rain
+  comes and how much (*Light rain 3–6pm · 1.9mm*), the next eight hours and the
+  next three days.
+- Comes from Home Assistant's weather entity (`weather.get_forecasts`, refreshed
+  every 30 minutes and when the entity changes). New option `weather_entity`;
+  empty uses the first one. Without a weather entity the divider is unchanged.
+
 ## 0.10.1
 
 - Music page: every Music Assistant speaker that can join a group gets a switch,

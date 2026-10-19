@@ -11,7 +11,7 @@ function dueField(due) {
   return { due_date: due }
 }
 
-export function createHomeAssistantSource({ url, token, entities, musicPlayer, musicGroup, log, onChange, onMusic }) {
+export function createHomeAssistantSource({ url, token, entities, musicPlayer, musicGroup, weatherEntity, log, onChange, onMusic, onWeather }) {
   const lists = new Map() // entity_id -> { name, items }
   const subscriptions = new Map() // subscribe message id -> entity_id
   const pending = new Map() // message id -> { resolve, reject }
@@ -25,6 +25,8 @@ export function createHomeAssistantSource({ url, token, entities, musicPlayer, m
   let playersSub = null
   let musicRetry = null
   let massEntryId = null
+  let weather = new Map() // the weather entity -> { state, attributes }; empty without one
+  let weatherSub = null
 
   function request(msg) {
     return new Promise((resolve, reject) => {
@@ -57,6 +59,20 @@ export function createHomeAssistantSource({ url, token, entities, musicPlayer, m
     log(`Home Assistant: watching ${todoIds.length} todo list(s): ${todoIds.join(', ') || 'none found'}`)
     onChange()
     watchMusic(states)
+    watchWeather(states)
+  }
+
+  /** The `weather_entity` option, or the first weather entity (Met.no's "Forecast Home" by default). */
+  function watchWeather(states) {
+    const found = weatherEntity ? states.find((s) => s.entity_id === weatherEntity) : states.find((s) => s.entity_id.startsWith('weather.'))
+    weather = new Map(found ? [[found.entity_id, { state: found.state, attributes: found.attributes ?? {} }]] : [])
+    log(`Home Assistant: weather from ${found?.entity_id ?? `nowhere (${weatherEntity || 'no weather entity'} not found)`}`)
+    if (found) {
+      weatherSub = nextId++
+      pending.set(weatherSub, { resolve() {}, reject: (err) => log(`subscribe weather failed: ${err.message}`) })
+      ws.send(JSON.stringify({ id: weatherSub, type: 'subscribe_entities', entity_ids: [found.entity_id] }))
+    }
+    onWeather()
   }
 
   /**
@@ -111,27 +127,30 @@ export function createHomeAssistantSource({ url, token, entities, musicPlayer, m
     return id
   }
 
-  /** subscribe_entities sends compressed diffs: a = added (full), c = changed (+/-), r = removed. */
-  function applyPlayersEvent(event) {
+  /**
+   * subscribe_entities sends compressed diffs: a = added (full), c = changed (+/-),
+   * r = removed. Applies one to `entities`; true if anything changed.
+   */
+  function applyEntityDiff(entities, event) {
     let touched = false
     for (const [id, added] of Object.entries(event.a ?? {})) {
-      players.set(id, { state: added.s, attributes: added.a ?? {} })
+      entities.set(id, { state: added.s, attributes: added.a ?? {} })
       touched = true
     }
     for (const [id, changed] of Object.entries(event.c ?? {})) {
-      const p = players.get(id)
+      const p = entities.get(id)
       if (!p) continue
       const attributes = { ...p.attributes, ...changed['+']?.a }
       for (const key of changed['-']?.a ?? []) delete attributes[key]
-      players.set(id, { state: changed['+']?.s ?? p.state, attributes })
+      entities.set(id, { state: changed['+']?.s ?? p.state, attributes })
       touched = true
     }
     for (const id of event.r ?? []) {
-      const p = players.get(id)
-      if (p) players.set(id, { ...p, state: 'unavailable' })
+      const p = entities.get(id)
+      if (p) entities.set(id, { ...p, state: 'unavailable' })
       touched = true
     }
-    if (touched) onMusic()
+    return touched
   }
 
   /** Music Assistant's config entry, which its services need. */
@@ -168,7 +187,11 @@ export function createHomeAssistantSource({ url, token, entities, musicPlayer, m
         }
         case 'event': {
           if (msg.id === playersSub) {
-            applyPlayersEvent(msg.event)
+            if (applyEntityDiff(players, msg.event)) onMusic()
+            break
+          }
+          if (msg.id === weatherSub) {
+            if (applyEntityDiff(weather, msg.event)) onWeather()
             break
           }
           const entityId = subscriptions.get(msg.id)
@@ -261,6 +284,25 @@ export function createHomeAssistantSource({ url, token, entities, musicPlayer, m
         target: { entity_id: on ? entityFor('group') : entityId },
         service_data: on ? { group_members: [entityId] } : {},
       })
+    },
+    /** The weather entity's { entityId, state, attributes }, or null. */
+    get weather() {
+      const [entry] = weather
+      return entry ? { entityId: entry[0], ...entry[1] } : null
+    },
+    /** weather.get_forecasts: type is 'hourly' or 'daily'. */
+    async weatherForecast(type) {
+      const entityId = this.weather?.entityId
+      if (!entityId) return []
+      const result = await request({
+        type: 'call_service',
+        domain: 'weather',
+        service: 'get_forecasts',
+        target: { entity_id: entityId },
+        service_data: { type },
+        return_response: true,
+      })
+      return result?.response?.[entityId]?.forecast ?? []
     },
     get lists() {
       return [...lists].map(([entityId, list], index) => ({
