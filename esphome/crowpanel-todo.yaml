@@ -216,6 +216,9 @@ light:
     name: Backlight
     output: backlight_pwm
     restore_mode: ALWAYS_ON
+    # However it was turned on (touch, chime, or HA), time it out again.
+    on_turn_on:
+      - script.execute: screen_idle
 
 binary_sensor:
   - platform: template

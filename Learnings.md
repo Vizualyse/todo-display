@@ -138,6 +138,13 @@ CrowPanel 7.0" unless marked otherwise.
   also counts as a wake. Swallow the whole waking gesture (down/move/up), or the
   tap ticks the todo under the finger. The stream keeps running while the screen
   is dark, so the screen is up to date as soon as it wakes.
+- **The backlight is an HA light, so area-wide light actions hit it.** The panel
+  sits in the Bedroom area, and the bedroom Bilresa remote's `light.toggle` /
+  `light.turn_on` on `area_id: bedroom` switched the screen on (and off) with the
+  room lights. A turn-on from HA doesn't start `screen_idle`, so the screen stayed
+  lit for 30-50 minutes until someone touched it. Found by checking the backlight's
+  logbook context (`automation_triggered`) in HA. The light's `on_turn_on` now
+  starts `screen_idle`, so any turn-on times out.
 
 ## ESPHome / ESP-IDF build gotchas
 
