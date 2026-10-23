@@ -1,0 +1,170 @@
+# Mic wiring check for the CrowPanel 7.0" with an I2S MEMS mic (INMP441-style) on the
+# microSD slot pads: SD -> GPIO10, WS -> GPIO11, SCK -> GPIO12, L/R -> GND.
+# At boot it tests GPIO10-13 for bridges and shorts, then shows live mic levels.
+# Flash crowpanel-todo.yaml again afterwards to get the todo display back.
+
+esphome:
+  name: crowpanel-mic-test
+  includes:
+    - usb_disable.h
+  platformio_options:
+    board_build.flash_mode: dio
+  on_boot:
+    # Before the mic's I2S driver claims the pins.
+    - priority: 800
+      then:
+        - lambda: |-
+            const gpio_num_t pins[] = {GPIO_NUM_10, GPIO_NUM_11, GPIO_NUM_12, GPIO_NUM_13};
+            const int n = 4;
+            std::string out;
+            auto pull_all = [&]() {
+              for (int i = 0; i < n; i++) {
+                gpio_reset_pin(pins[i]);
+                gpio_set_direction(pins[i], GPIO_MODE_INPUT);
+                gpio_set_pull_mode(pins[i], GPIO_PULLUP_ONLY);
+              }
+              delayMicroseconds(2000);
+            };
+            pull_all();
+            // Pulled up and undriven: a low pin is shorted to GND (or driven by something).
+            for (int i = 0; i < n; i++)
+              if (!gpio_get_level(pins[i])) out += str_sprintf("GPIO%d stuck LOW (GND short?)  ", pins[i]);
+            // Drive each one low in turn; anything that follows it is bridged to it.
+            for (int i = 0; i < n; i++) {
+              gpio_set_direction(pins[i], GPIO_MODE_INPUT_OUTPUT);
+              gpio_set_level(pins[i], 0);
+              delayMicroseconds(2000);
+              if (gpio_get_level(pins[i])) out += str_sprintf("GPIO%d won't go LOW (3V3 short?)  ", pins[i]);
+              for (int j = i + 1; j < n; j++)
+                if (!gpio_get_level(pins[j])) out += str_sprintf("GPIO%d-GPIO%d bridged  ", pins[i], pins[j]);
+              pull_all();
+            }
+            for (int i = 0; i < n; i++) gpio_reset_pin(pins[i]);
+            id(wire_result) = out.empty() ? "No bridges or shorts on GPIO10-13" : out;
+            ESP_LOGI("wires", "%s", id(wire_result).c_str());
+    - priority: -100
+      then:
+        - script.execute: draw
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  flash_size: 4MB
+  framework:
+    type: esp-idf
+    sdkconfig_options:
+      CONFIG_ESP_CONSOLE_SECONDARY_NONE: y
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+external_components:
+  - source:
+      type: local
+      path: components
+    components: [tile_stream]
+
+logger:
+  level: DEBUG
+  hardware_uart: UART0
+  logs:
+    sensor: INFO
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+display:
+  - platform: tile_stream
+    id: panel
+    # Nothing listens here: the stream never connects and the test screen stays.
+    url: "ws://127.0.0.1:1/ws"
+
+font:
+  - file: "gfonts://Roboto@700"
+    id: big
+    size: 64
+  - file: "gfonts://Roboto"
+    id: small
+    size: 26
+
+output:
+  - platform: ledc
+    id: backlight_pwm
+    pin: GPIO2
+    frequency: 20kHz
+
+light:
+  - platform: monochromatic
+    id: backlight
+    output: backlight_pwm
+    restore_mode: ALWAYS_ON
+
+globals:
+  - id: wire_result
+    type: std::string
+    initial_value: '"(not run)"'
+
+i2c:
+  sda: GPIO19
+  scl: GPIO20
+  frequency: 400kHz
+  scan: false
+
+i2s_audio:
+  - id: i2s_in
+    i2s_lrclk_pin: GPIO11
+    i2s_bclk_pin: GPIO12
+
+microphone:
+  - platform: i2s_audio
+    id: mic
+    i2s_audio_id: i2s_in
+    i2s_din_pin: GPIO10
+    adc_type: external
+    channel: left
+    bits_per_sample: 32bit
+    sample_rate: 16000
+
+sensor:
+  - platform: sound_level
+    microphone: mic
+    measurement_duration: 500ms
+    passive: false
+    peak:
+      id: mic_peak
+      name: Mic peak
+    rms:
+      id: mic_rms
+      name: Mic RMS
+      on_value:
+        - script.execute: draw
+
+script:
+  - id: draw
+    then:
+      - lambda: |-
+          auto &it = *id(panel);
+          float rms = id(mic_rms).state, peak = id(mic_peak).state;
+          ESP_LOGI("mic", "RMS %.1f dBFS, peak %.1f dBFS", rms, peak);
+          it.fill(Color(20, 60, 140));
+          it.print(400, 40, id(small), Color(220, 230, 255), display::TextAlign::CENTER, "Wiring check");
+          it.print(400, 80, id(small), Color(255, 220, 0), display::TextAlign::CENTER, id(wire_result).c_str());
+          it.print(400, 150, id(small), Color(220, 230, 255), display::TextAlign::CENTER, "Mic level (dBFS)");
+          if (std::isnan(rms)) {
+            it.print(400, 230, id(big), Color(255, 255, 255), display::TextAlign::CENTER, "--");
+          } else {
+            it.printf(400, 230, id(big), Color(255, 255, 255), display::TextAlign::CENTER,
+                      "RMS %.0f   peak %.0f", rms, peak);
+            // Bar from -90 dBFS (left) to 0 dBFS (right).
+            int w = std::max(0, std::min(700, (int) ((rms + 90.0f) / 90.0f * 700)));
+            it.rectangle(50, 300, 700, 40, Color(220, 230, 255));
+            it.filled_rectangle(50, 300, w, 40, Color(0, 220, 120));
+          }
+          it.print(400, 400, id(small), Color(220, 230, 255), display::TextAlign::CENTER,
+                   "Quiet room ~ -60..-45, talking ~ -40..-20. Stuck at -inf or ~0 = data problem.");

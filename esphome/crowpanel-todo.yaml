@@ -126,7 +126,15 @@ touchscreen:
             - globals.set: { id: swallow_touch, value: "true" }
             - light.turn_on: { id: backlight, transition_length: 0s }
           else:
-            - lambda: id(panel).touch_down(touch.x, touch.y);
+            # A tap while a finished timer rings only silences it.
+            - if:
+                condition:
+                  script.is_running: timer_ring
+                then:
+                  - script.stop: timer_ring
+                  - globals.set: { id: swallow_touch, value: "true" }
+                else:
+                  - lambda: id(panel).touch_down(touch.x, touch.y);
       - script.execute: screen_idle
     on_update:
       - lambda: |-
@@ -151,16 +159,46 @@ script:
     then:
       - delay: ${screen_timeout}
       - light.turn_off: { id: backlight, transition_length: 1s }
+  # A finished voice timer: ring until tapped, for up to about half a minute.
+  - id: timer_ring
+    mode: restart
+    then:
+      - light.turn_on: { id: backlight, transition_length: 0s }
+      - repeat:
+          count: 12
+          then:
+            - lambda: chimes::play(id(fx_spk), "bell", 1.0f);
+            - delay: 2500ms
 
 # NS4168 I2S amp on the speaker socket. A mixer shares it between sound effects
-# (clicks, alarm chimes) and music, both at 48kHz so nothing needs resampling.
+# (clicks, alarm chimes), music and voice replies, all at 48kHz so nothing needs
+# resampling. The mic (INMP441, soldered to the microSD pads) has its own bus, so it
+# isn't tied to the always-running speaker.
 i2s_audio:
-  i2s_lrclk_pin: GPIO18
-  i2s_bclk_pin: GPIO42
+  - id: i2s_out
+    i2s_lrclk_pin: GPIO18
+    i2s_bclk_pin: GPIO42
+  - id: i2s_in
+    i2s_lrclk_pin: GPIO11
+    # Bridged to GPIO13 on our unit: keep 13 an undriven input (no SD card).
+    i2s_bclk_pin: GPIO12
+
+microphone:
+  - platform: i2s_audio
+    id: mic
+    i2s_audio_id: i2s_in
+    i2s_din_pin: GPIO10
+    adc_type: external
+    # L/R tied to GND.
+    channel: left
+    # 24-bit samples in 32-bit slots.
+    bits_per_sample: 32bit
+    sample_rate: 16000
 
 speaker:
   - platform: i2s_audio
     id: amp
+    i2s_audio_id: i2s_out
     dac_type: external
     i2s_dout_pin: GPIO17
     channel: mono
@@ -177,6 +215,7 @@ speaker:
         # Room for a whole alarm chime (up to 1.75s), queued in one go.
         buffer_duration: 2s
       - id: music_spk
+      - id: announce_spk
 
 # Music from Music Assistant over Sendspin. HA hands the device to Music Assistant,
 # which lists it as a player (and as a Spotify Connect target if enabled there).
@@ -189,6 +228,10 @@ media_source:
     task_stack_in_psram: true
     # The amp is mono; a lower rate isn't worth it (Opus needs 48kHz anyway).
     sample_rate: 48000
+  # Voice assistant replies (TTS) and other HA announcements, fetched by URL.
+  - platform: audio_http
+    id: announce_http
+    task_stack_in_psram: true
 
 media_player:
   - platform: speaker_source
@@ -203,6 +246,56 @@ media_player:
       sources:
         - sendspin_source
       num_channels: 1
+    # HA transcodes announcements to this format, so the mixer gets 48kHz mono.
+    announcement_pipeline:
+      speaker: announce_spk
+      sources:
+        - announce_http
+      format: FLAC
+      sample_rate: 48000
+      num_channels: 1
+
+# Home Assistant voice: "Okay Nabu" is detected on the panel, then the speech goes to
+# HA's Assist pipeline and the reply plays through the media player.
+micro_wake_word:
+  id: mww
+  microphone:
+    microphone: mic
+    gain_factor: 4
+  task_stack_in_psram: true
+  models:
+    - model: okay_nabu
+  on_wake_word_detected:
+    - voice_assistant.start:
+        wake_word: !lambda return wake_word;
+    # Light the screen so a reply can be read too.
+    - light.turn_on: { id: backlight, transition_length: 0s }
+
+voice_assistant:
+  id: va
+  microphone:
+    microphone: mic
+    gain_factor: 4
+  micro_wake_word: mww
+  media_player: music
+  noise_suppression_level: 2
+  auto_gain: 31dBFS
+  # Listen for the wake word only while HA is connected to take the request.
+  on_client_connected:
+    - micro_wake_word.start:
+  on_client_disconnected:
+    - voice_assistant.stop:
+    - micro_wake_word.stop:
+  # Voice timers ("set a timer for 10 minutes") run in HA; a handler here tells HA the
+  # panel supports them.
+  on_timer_finished:
+    - script.execute: timer_ring
+  # The wake word stops after a detection; listen again once the request is done.
+  on_end:
+    - wait_until:
+        not:
+          voice_assistant.is_running:
+    - micro_wake_word.start:
 
 output:
   - platform: ledc

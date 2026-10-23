@@ -127,6 +127,40 @@ CrowPanel 7.0" unless marked otherwise.
   chimes too. We lean into it: that volume is the panel's master volume, the page
   sets it (`v <n>`) and the panel reports every change back (`on_volume`), so the
   page and Music Assistant never disagree. Effects are rendered at full scale.
+- **The headers expose no spare GPIO.** I2C (IO20, IO19, 3v3, GND), GPIO_D (IO38, NC,
+  3v3, GND), UART0 (IO44 RX, IO43 TX, 3v3, GND), and an 8-pin GPIO_D/I2C combo with
+  the same signals. 19/20 are touch, 38 is the GT911 INT, and the CH340's TX drives
+  IO44. IO43 is the only one usable, and only with UART0 logging off. Anything else,
+  like an I2S mic, means soldering to the microSD slot (GPIO10-13 expected) or the
+  amp's I2S lines. `esphome/crowpanel-pin-finder.yaml` blinks one candidate at 1Hz
+  (the rest held low) so you can find the pads with a multimeter. A steady high won't
+  do: the slot's pull-ups and supply pins read 3.3V too.
+- **I2S mic on the microSD pads works.** INMP441: SD GPIO10, WS GPIO11, SCK GPIO12,
+  L/R to GND, on its own `i2s_audio` bus (`bits_per_sample: 32bit`, `channel: left`).
+  Measured with `sound_level`: quiet room ~-70 dBFS RMS, speech -50..-40 with peaks
+  ~-12. Our unit has a solder bridge GPIO12-GPIO13; harmless while GPIO13 stays an
+  undriven input, but never use the SD card or drive 13 with it there.
+  `esphome/crowpanel-mic-test.yaml` checks GPIO10-13 for bridges/shorts at boot
+  (`on_boot` priority 800, before I2S claims them) and shows live levels.
+- **Voice assistant: on-device "Okay Nabu" + HA Assist.** `micro_wake_word` and
+  `voice_assistant` on the mic (`gain_factor: 4`); replies play through the music
+  player's `announcement_pipeline` (`audio_http` source, FLAC 48kHz mono, a third
+  mixer source `announce_spk`; it must be a different speaker from the media
+  pipeline's). Detection probability 0.97-0.99 at normal speaking distance, and a
+  full-frame draw stayed ~212ms. Flash went 69% -> 85.5%. HA's pipeline needs an STT
+  engine: without one every request ends in `validation-error - the pipeline does
+  not support speech-to-text` right after the wake word.
+- **Voice timers need a handler on the panel.** HA only offers timers to a satellite
+  that defines an `on_timer_*` trigger; `on_timer_finished` runs `timer_ring` (bell
+  every 2.5s, ~30s, a tap silences it and is swallowed).
+- **The LLM's built-in list tool can't set dates.** `HassListAddItem` takes only the
+  item and list name, so "tomorrow" is dropped. The `script.add_todo` script (exposed
+  to Assist, so the LLM sees it as a tool) posts to the add-on's `/api/todos` through
+  a `rest_command` in HA's `configuration.yaml` (`X-Display-Key`), which also sets the
+  panel alarm. No MCP needed. Script results are templated values: a JSON string in a
+  variable is parsed back into a dict, so build the JSON in the `rest_command` payload.
+  Ollama (qwen3:8b) put "to-do list" items on the shopping list until the instructions
+  named the lists; the to-do list (Married Life) also has aliases "To-do list", "Todo".
 - **Backlight (GPIO2) is off unless a config drives it.** A test firmware without the
   `ledc` backlight light looks blank even though the framebuffer is drawn.
 - **RGB565 bands gradients.** Design with flat colours. The old dark radial
