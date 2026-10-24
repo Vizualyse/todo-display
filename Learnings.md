@@ -150,6 +150,14 @@ CrowPanel 7.0" unless marked otherwise.
   full-frame draw stayed ~212ms. Flash went 69% -> 85.5%. HA's pipeline needs an STT
   engine: without one every request ends in `validation-error - the pipeline does
   not support speech-to-text` right after the wake word.
+- **The voice assistant can't be told to skip its own playback.** Its media player
+  is fixed at build time; nulling it at runtime (`set_media_player(nullptr)`) leaves
+  it in `STREAMING_RESPONSE` forever after `tts-end` (`local_output_` stays true and
+  nothing starts the playback timeout), so `on_end`'s wait never finishes. "Reply on
+  Alexa" instead lets the panel play the reply with `announce_spk` ducked 50dB (the
+  mixer's maximum; 51 is clamped) and sends `on_tts_end`'s URL to
+  `music_assistant.play_announcement` on the Echo. HA must allow the device to
+  perform actions. Ducking only that source leaves chimes and music alone.
 - **Voice timers need a handler on the panel.** HA only offers timers to a satellite
   that defines an `on_timer_*` trigger; `on_timer_finished` runs `timer_ring` (bell
   every 2.5s, ~30s, a tap silences it and is swallowed).

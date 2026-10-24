@@ -12,6 +12,10 @@ substitutions:
   # stream_url: "wss://todo.vizualyse.uk/ws?key=${display_key}"
   # Backlight turns off after this long without a touch; a tap wakes it.
   screen_timeout: 30s
+  # With "Reply on Alexa" on, voice replies play on this Music Assistant player instead.
+  alexa_player: media_player.kitchen_dot
+  # How long after the panel's (silent) reply to wait before listening again.
+  alexa_reply_lag: 5s
 
 esphome:
   name: ${name}
@@ -256,7 +260,8 @@ media_player:
       num_channels: 1
 
 # Home Assistant voice: "Okay Nabu" is detected on the panel, then the speech goes to
-# HA's Assist pipeline and the reply plays through the media player.
+# HA's Assist pipeline and the reply plays through the media player, or on the Echos
+# when "Reply on Alexa" is on.
 micro_wake_word:
   id: mww
   microphone:
@@ -290,12 +295,50 @@ voice_assistant:
   # panel supports them.
   on_timer_finished:
     - script.execute: timer_ring
+  # Replying on the Echos: the voice assistant can't skip its own media player, so the
+  # panel still plays the reply (which keeps its state machine and timing intact) but
+  # with the announcement source ducked as far as the mixer goes (50dB, near silent).
+  on_start:
+    - if:
+        condition:
+          switch.is_on: reply_on_alexa
+        then:
+          - mixer_speaker.apply_ducking: { id: announce_spk, decibel_reduction: 50 }
+  # Music Assistant plays it on the Echo (and the Echos grouped with it in the Alexa
+  # app). Needs "Allow the device to perform Home Assistant actions" in HA.
+  on_tts_end:
+    - if:
+        condition:
+          switch.is_on: reply_on_alexa
+        then:
+          - homeassistant.action:
+              action: music_assistant.play_announcement
+              data:
+                entity_id: ${alexa_player}
+                url: !lambda return x;
+                use_pre_announce: "false"
   # The wake word stops after a detection; listen again once the request is done.
   on_end:
     - wait_until:
         not:
           voice_assistant.is_running:
+    # The Echos start a few seconds behind the panel; don't let "Okay Nabu" or the
+    # reply itself, coming back from them, start another request.
+    - if:
+        condition:
+          switch.is_on: reply_on_alexa
+        then:
+          - delay: ${alexa_reply_lag}
+    - mixer_speaker.apply_ducking: { id: announce_spk, decibel_reduction: 0 }
     - micro_wake_word.start:
+
+switch:
+  - platform: template
+    id: reply_on_alexa
+    name: Reply on Alexa
+    icon: mdi:speaker-message
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
 
 output:
   - platform: ledc
