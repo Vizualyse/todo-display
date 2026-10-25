@@ -1,0 +1,22 @@
+--- a/piper_sample_generator/__main__.py
++++ b/piper_sample_generator/__main__.py
+@@ -2,6 +2,7 @@
+ import argparse
+ import gc
+ import itertools as it
++import random
+ import json
+ import logging
+ import os
+@@ -109,7 +110,10 @@
+         )
+     )
+ 
+-    speakers_iter = it.cycle(it.product(range(num_speakers), range(num_speakers)))
++    # Random pairs: walking the product in order only ever reaches the first few
++    # speakers within a few thousand samples.
++    _rng = random.Random()
++    speakers_iter = ((_rng.randrange(num_speakers), _rng.randrange(num_speakers)) for _ in it.count())
+     speakers_batch = list(it.islice(speakers_iter, 0, batch_size))
+     if isinstance(text, str) and os.path.isfile(text):
+         texts = it.cycle(

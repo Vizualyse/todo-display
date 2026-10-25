@@ -158,6 +158,39 @@ CrowPanel 7.0" unless marked otherwise.
   mixer's maximum; 51 is clamped) and sends `on_tts_end`'s URL to
   `music_assistant.play_announcement` on the Echo. HA must allow the device to
   perform actions. Ducking only that source leaves chimes and music alone.
+- **Custom wake word "Hey Ned" (`esphome/wake_words/`) was trained locally** with
+  microWakeWord on the AI VM's RTX 3060 (container `mww-train`, venvs and samples on
+  the NAS `/mnt/nas/wakeword-train`, hot data on local `/srv/wakeword`). Scripts and
+  steps: `esphome/wake_words/training/`. Samples: 10,000 Piper clips (LibriTTS-R
+  generator, random speaker pairs, plus 9 en_GB voices) and ~7,000 near-miss
+  negatives ("hey Ted", "hey Fred", "ned"...). Quantised streaming test: cutoff 0.81
+  missed 32% at 0.19 false wakes/h of dinner-party audio, 0.73 missed 28% at 0.56/h;
+  shipped at 0.7, and it wakes for a real voice on the panel. Costs ~62KB:
+  flash 85.5% -> 89.3%. Gotchas that cost time:
+  - **Home Assistant chooses which wake words run.** The device's two "Wake word"
+    selects (`select.<device>_wake_word`, `_wake_word_2`) enable models; one that
+    isn't selected never fires, at any cutoff, and the logs say nothing. Check these
+    before blaming a model.
+  - **The generator walks speaker pairs in order** ((0,0), (0,1)...), so 3,000
+    LibriTTS clips only ever used speakers 0-3, and the smaller sets used speaker 0
+    alone. They all sounded like the same few American women. `random-speakers.patch`
+    picks random pairs instead.
+  - Training reads 128 random clips per step from ~37GB of mmap'd features. When
+    they don't fit in page cache it's disk-bound: 1.1 steps/s on 23GB RAM (7.5h for
+    30k steps), 5-9 steps/s on 46GB with `warm.sh` re-reading the files sequentially
+    (each eval's validation load evicts ~6GB of cache). Warm only the run's own
+    dirs: old feature sets compete for the cache. 30k steps took 1-2h.
+  - `pkill -f <pattern>` run over SSH matches its own `bash -c` command line and
+    kills the session. Anchor the pattern (`^sh /srv/...`) or kill by PID.
+  - The notebook is stale: AudioSet is now parquet (`data/bal_train/NN.parquet`),
+    `datasets` 4 needs torchcodec (pin `datasets<4` + librosa), TF 2.21 needs
+    `tensorboard` installed and `LD_LIBRARY_PATH` set to the pip `nvidia/*/lib` dirs
+    (it can't find `libcusolver.so.11`), `webrtcvad` needs a compiler (use
+    `webrtcvad-wheels`), and `piper_train` needs `PYTHONPATH` set to the generator repo.
+  - SMB (CIFS) has no symlinks: venvs need `--copies` and a real `lib64` dir, and
+    apt's `TMPDIR` must stay local. Overwriting a file with a shorter one over SMB
+    left null padding (`SyntaxError: source code cannot contain null bytes`): delete
+    before writing.
 - **Voice timers need a handler on the panel.** HA only offers timers to a satellite
   that defines an `on_timer_*` trigger; `on_timer_finished` runs `timer_ring` (bell
   every 2.5s, ~30s, a tap silences it and is swallowed).

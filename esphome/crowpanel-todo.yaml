@@ -270,6 +270,11 @@ micro_wake_word:
   task_stack_in_psram: true
   models:
     - model: okay_nabu
+    # Trained locally with microWakeWord (wake_words/training/). Tune
+    # `probability_cutoff` in its JSON if it misses (lower) or wakes on its own
+    # (higher). HA's "Wake word" selects decide which models actually run.
+    - model: wake_words/hey_ned.json
+      id: hey_ned
   on_wake_word_detected:
     - voice_assistant.start:
         wake_word: !lambda return wake_word;
