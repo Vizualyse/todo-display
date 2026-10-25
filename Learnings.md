@@ -354,6 +354,11 @@ CrowPanel 7.0" unless marked otherwise.
 - Long multi-file bash heredocs failed to parse here. Use the Write tool for file
   contents. Scripted edits through a heredoc also mangle escapes: a `\n` in a JS
   string reached the file as a real newline, and `\\.` in YAML didn't match. Use
+- **Stop API log containers with `docker stop`, not `timeout`.** `timeout docker run
+  ... logs` kills only the client; the container keeps its API connection. Ten
+  leftovers locked HA out of the panel, which looked like a dead mic: with HA
+  disconnected, `on_client_disconnected` stops wake word detection. Run them with
+  `--name` and `docker stop` them, and check `docker ps` afterwards.
   the Edit tool for anything with backslashes.
 - Windows Firewall: the Wi-Fi profile is *Public*, so port 8099 needed an inbound
   rule for local testing.
