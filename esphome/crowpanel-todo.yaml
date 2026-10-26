@@ -321,7 +321,10 @@ voice_assistant:
               data:
                 entity_id: ${alexa_player}
                 url: !lambda return x;
-                use_pre_announce: "false"
+              # `data` values arrive as strings, and "false" counts as true: a
+              # template renders to a real boolean.
+              data_template:
+                use_pre_announce: "{{ false }}"
   # The wake word stops after a detection; listen again once the request is done.
   on_end:
     - wait_until:
@@ -336,6 +339,28 @@ voice_assistant:
           - delay: ${alexa_reply_lag}
     - mixer_speaker.apply_ducking: { id: announce_spk, decibel_reduction: 0 }
     - micro_wake_word.start:
+
+# The page's microphone button presses this (through the add-on and HA): start
+# listening as if the wake word was heard, or stop the request that's running.
+button:
+  - platform: template
+    id: talk
+    name: Talk
+    icon: mdi:microphone
+    on_press:
+      - if:
+          condition: voice_assistant.is_running
+          then:
+            - voice_assistant.stop:
+            # on_end isn't guaranteed for a stopped request; listen for the wake word again.
+            - wait_until:
+                not:
+                  voice_assistant.is_running:
+            - micro_wake_word.start:
+          else:
+            # As after a detection: the wake word is off while a request runs.
+            - micro_wake_word.stop:
+            - voice_assistant.start:
 
 switch:
   - platform: template
