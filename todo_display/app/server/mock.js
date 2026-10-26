@@ -1,5 +1,14 @@
 /** In-memory stand-in for Home Assistant, used when no HA connection is configured. */
-export function createMockSource({ onChange, onMusic }) {
+export function createMockSource({ onChange, onMusic, onVoice }) {
+  // A pretend Assist satellite: Talk listens, hears nothing for 4s, and goes back to idle.
+  let voice = 'idle'
+  let voiceTimer = null
+  const setVoice = (state) => {
+    clearTimeout(voiceTimer)
+    voice = state
+    if (state === 'listening') voiceTimer = setTimeout(() => setVoice('idle'), 4000)
+    onVoice?.()
+  }
   // A pretend Music Assistant player in a sync group, so the music popover and page
   // can be tried without HA.
   const nowPlaying = { media_title: 'Golden Hour', media_artist: 'JVKE', media_album_name: 'this is what ____ feels like', media_content_id: 'mock://track/0' }
@@ -132,6 +141,12 @@ export function createMockSource({ onChange, onMusic }) {
     },
     async weatherForecast(type) {
       return type === 'hourly' ? hourly() : daily()
+    },
+    get voice() {
+      return { entityId: 'assist_satellite.mock_crowpanel', state: voice }
+    },
+    async talk() {
+      setVoice(voice === 'idle' ? 'listening' : 'idle')
     },
     get lists() {
       // Like local_todo, the dated lists take times too.

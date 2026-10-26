@@ -11,7 +11,7 @@ function dueField(due) {
   return { due_date: due }
 }
 
-export function createHomeAssistantSource({ url, token, entities, musicPlayer, musicGroup, weatherEntity, log, onChange, onMusic, onWeather }) {
+export function createHomeAssistantSource({ url, token, entities, musicPlayer, musicGroup, weatherEntity, voiceSatellite, voiceButton, log, onChange, onMusic, onWeather, onVoice }) {
   const lists = new Map() // entity_id -> { name, items }
   const subscriptions = new Map() // subscribe message id -> entity_id
   const pending = new Map() // message id -> { resolve, reject }
@@ -27,6 +27,9 @@ export function createHomeAssistantSource({ url, token, entities, musicPlayer, m
   let massEntryId = null
   let weather = new Map() // the weather entity -> { state, attributes }; empty without one
   let weatherSub = null
+  let voice = new Map() // the panel's Assist satellite -> { state, attributes }; empty without one
+  let voiceSub = null
+  let talkId = null // the panel's "Talk" button, which starts or stops listening
 
   function request(msg) {
     return new Promise((resolve, reject) => {
@@ -60,6 +63,34 @@ export function createHomeAssistantSource({ url, token, entities, musicPlayer, m
     onChange()
     watchMusic(states)
     watchWeather(states)
+    watchVoice(states)
+  }
+
+  /**
+   * The panel's voice assistant: the `voice_satellite` option, or an Assist satellite
+   * named after the panel, and its "Talk" button (`voice_button`, or the panel's
+   * button named "talk"). Its state is idle, listening, processing or responding.
+   */
+  const isPanel = (s) => /crowpanel/i.test(`${s.entity_id} ${s.attributes?.friendly_name ?? ''}`)
+  const findTalk = (states) =>
+    (voiceButton
+      ? states.find((s) => s.entity_id === voiceButton)
+      : states.find((s) => s.entity_id.startsWith('button.') && isPanel(s) && /talk/i.test(s.entity_id))
+    )?.entity_id ?? null
+
+  function watchVoice(states) {
+    const found = voiceSatellite
+      ? states.find((s) => s.entity_id === voiceSatellite)
+      : states.find((s) => s.entity_id.startsWith('assist_satellite.') && isPanel(s))
+    talkId = findTalk(states)
+    voice = new Map(found ? [[found.entity_id, { state: found.state, attributes: found.attributes ?? {} }]] : [])
+    log(`Home Assistant: voice assistant ${found?.entity_id ?? 'none found'}, talk button ${talkId ?? 'none found'}`)
+    if (found) {
+      voiceSub = nextId++
+      pending.set(voiceSub, { resolve() {}, reject: (err) => log(`subscribe voice failed: ${err.message}`) })
+      ws.send(JSON.stringify({ id: voiceSub, type: 'subscribe_entities', entity_ids: [found.entity_id] }))
+    }
+    onVoice()
   }
 
   /** The `weather_entity` option, or the first weather entity (Met.no's "Forecast Home" by default). */
@@ -194,6 +225,10 @@ export function createHomeAssistantSource({ url, token, entities, musicPlayer, m
             if (applyEntityDiff(weather, msg.event)) onWeather()
             break
           }
+          if (msg.id === voiceSub) {
+            if (applyEntityDiff(voice, msg.event)) onVoice()
+            break
+          }
           const entityId = subscriptions.get(msg.id)
           if (entityId && lists.has(entityId)) {
             lists.get(entityId).items = msg.event.items ?? []
@@ -303,6 +338,20 @@ export function createHomeAssistantSource({ url, token, entities, musicPlayer, m
         return_response: true,
       })
       return result?.response?.[entityId]?.forecast ?? []
+    },
+    /** The panel's Assist satellite { entityId, state }, or null. */
+    get voice() {
+      const [entry] = voice
+      return entry ? { entityId: entry[0], state: entry[1].state } : null
+    },
+    /**
+     * Presses the panel's Talk button: it starts listening, or stops the request that's
+     * running. Looked up again if missing, since it appears with a firmware update.
+     */
+    async talk() {
+      talkId ??= findTalk(await request({ type: 'get_states' }))
+      if (!talkId) throw new Error('no talk button on the panel')
+      await request({ type: 'call_service', domain: 'button', service: 'press', target: { entity_id: talkId } })
     },
     get lists() {
       return [...lists].map(([entityId, list], index) => ({

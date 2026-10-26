@@ -46,6 +46,9 @@ function loadConfig() {
     musicSpeakers: opts.music_speakers ?? (env.MUSIC_SPEAKERS ? env.MUSIC_SPEAKERS.split(',').map((s) => s.trim()) : []),
     // Empty uses the first weather entity.
     weatherEntity: opts.weather_entity || env.WEATHER_ENTITY || '',
+    // Empty finds the panel's Assist satellite and its Talk button by name.
+    voiceSatellite: opts.voice_satellite || env.VOICE_SATELLITE || '',
+    voiceButton: opts.voice_button || env.VOICE_BUTTON || '',
     port: Number(env.PORT || 8099),
     secret: String(opts.display_secret || env.DISPLAY_SECRET || 'dev-secret'),
     orientation: opts.orientation || env.ORIENTATION || 'portrait',
@@ -91,6 +94,20 @@ function onMusic() {
   broadcastMusic()
 }
 
+/** The voice button: { available, state }; state is idle, listening, processing or responding. */
+function voiceState() {
+  const v = source.voice
+  return v && v.state !== 'unavailable' ? { available: true, state: v.state } : { available: false }
+}
+// The state rides in the event itself: listening should light up in the very next frame.
+let lastVoice = ''
+const broadcastVoice = () => {
+  const now = JSON.stringify(voiceState())
+  if (now === lastVoice) return
+  lastVoice = now
+  for (const res of subscribers) res.write(`event: voice\ndata: ${now}\n\n`)
+}
+
 const source = config.ha
   ? createHomeAssistantSource({
       ...config.ha,
@@ -98,12 +115,15 @@ const source = config.ha
       musicPlayer: config.musicPlayer,
       musicGroup: () => config.musicGroup || settings.get().musicGroup,
       weatherEntity: config.weatherEntity,
+      voiceSatellite: config.voiceSatellite,
+      voiceButton: config.voiceButton,
       log,
       onChange: broadcast,
       onMusic,
       onWeather: () => weather.entityChanged(),
+      onVoice: broadcastVoice,
     })
-  : createMockSource({ onChange: broadcast, onMusic })
+  : createMockSource({ onChange: broadcast, onMusic, onVoice: broadcastVoice })
 if (!config.ha) log('No Home Assistant connection configured, using mock todos')
 rememberGroup()
 
@@ -347,6 +367,21 @@ const TARGETS = { '/api/music': 'panel', '/api/music/group': 'group' }
 
 app.get('/api/music', (req, res) => res.json(musicState()))
 app.get('/api/weather', (req, res) => res.json(weather.state))
+app.get('/api/voice', (req, res) => res.json(voiceState()))
+
+// Starts listening on the panel, or stops the request that's running.
+app.post('/api/voice/talk', async (req, res) => {
+  try {
+    await source.talk()
+    res.json({ ok: true })
+  } catch (err) {
+    log(`talk failed: ${err.message}`)
+    // Pages drop their optimistic state.
+    lastVoice = ''
+    broadcastVoice()
+    res.status(502).json({ error: err.message })
+  }
+})
 
 for (const [base, target] of Object.entries(TARGETS)) {
   app.get(`${base}/art`, async (req, res) => {

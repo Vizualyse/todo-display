@@ -31,7 +31,8 @@ export const PauseIcon = () => <Icon className="size-5" d="M8.5 5.5v13M15.5 5.5v
 export const SkipNextIcon = () => <Icon d="M6 6l8 6-8 6zM18 6v12" />
 export const SkipPrevIcon = () => <Icon d="M18 6l-8 6 8 6zM6 6v12" />
 export const MusicIcon = ({ className = 'size-5' }) => <Icon className={className} d="M9 18V5.5l11-2V16M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zM20 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0z" />
-export const FilterIcon = () => <Icon className="size-5" d="M4 5h16l-6 7.5V18l-4 2v-7.5z" />
+export const MicIcon = ({ className = 'size-5' }) => <Icon className={className} d="M12 3.5a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0v-5a3 3 0 0 0-3-3zM5.5 11a6.5 6.5 0 0 0 13 0M12 17.5v3" />
+export const FilterIcon =() => <Icon className="size-5" d="M4 5h16l-6 7.5V18l-4 2v-7.5z" />
 
 export function CheckIcon() {
   return (

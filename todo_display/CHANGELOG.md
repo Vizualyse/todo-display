@@ -3,6 +3,16 @@
 Bump `version` in `config.yaml` with every change: Home Assistant only rebuilds
 the add-on when the version changes.
 
+## 0.12.0
+
+- Voice: a microphone button left of the music button lights up while the panel's
+  voice assistant listens, and is tinted while it thinks and replies. Tap it to
+  start listening without the wake word, or to stop a request. It presses the
+  panel's *Talk* button (firmware with that button needed); the state comes from
+  the panel's Assist satellite and is pushed with the event, no extra request.
+- New options `voice_satellite` and `voice_button`; empty finds them by name.
+- Without a voice assistant the page is unchanged.
+
 ## 0.11.0
 
 - Weather: a chip in the divider under the date shows the weather now, the

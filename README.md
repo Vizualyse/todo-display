@@ -57,6 +57,11 @@ With Music Assistant set up, a note button left of the heart shows what the pane
 group's now playing and controls, a switch per speaker to add it to the group or take it out, and
 a track search. Tap a result to play it on the group straight away.
 
+With the panel's voice assistant in Home Assistant, a microphone button sits left of the note. It
+lights up while the assistant listens and is tinted while it thinks and replies. Tap it to start
+listening without the wake word, or to stop the request that's running (it presses the panel's
+*Talk* button).
+
 - `http://localhost:8099/` — the page as a normal web page
 - `http://localhost:8099/preview` — a browser stand-in for the panel: same protocol, click to "touch",
   shows touch→pixels latency (tick *outline tiles* to see what each update sends)
@@ -81,6 +86,8 @@ a track search. Tap a result to play it on the group straight away.
 | `music_group` | `""` | The Music Assistant sync group for the music page; empty finds the one the panel is in |
 | `music_speakers` | `[]` | Speakers offered on the music page; empty offers every Music Assistant player that can join a group |
 | `weather_entity` | `""` | Weather for the brolly chip; empty uses the first `weather.*` entity |
+| `voice_satellite` | `""` | The panel's Assist satellite for the microphone button; empty finds it by name ("CrowPanel") |
+| `voice_button` | `""` | The panel's *Talk* button the microphone presses; empty finds it by name |
 
 ## Flash the panel
 

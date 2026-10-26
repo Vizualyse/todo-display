@@ -11,6 +11,7 @@ import { MenuButton } from './components/menu/MenuButton.jsx'
 import { MusicButton, MusicMenu } from './components/menu/MusicMenu.jsx'
 import { TabMenu } from './components/menu/TabMenu.jsx'
 import { tabTitle } from './components/menu/tabs.js'
+import { VoiceButton } from './components/menu/VoiceButton.jsx'
 import { MusicPage } from './components/music/MusicPage.jsx'
 import { WeatherChip, WeatherMenu } from './components/weather/WeatherMenu.jsx'
 import { useListSelection } from './hooks/useListSelection.js'
@@ -19,6 +20,7 @@ import { useMusic } from './hooks/useMusic.js'
 import { useOrientation } from './hooks/useOrientation.js'
 import { useTapSound } from './hooks/useTapSound.js'
 import { useTodos } from './hooks/useTodos.js'
+import { useVoice } from './hooks/useVoice.js'
 import { useWeather } from './hooks/useWeather.js'
 import { FILTERS, byUpcoming } from './lib/todos.js'
 
@@ -38,6 +40,9 @@ export default function App() {
   const sound = useTapSound()
   const music = useMusic()
   const weather = useWeather()
+  const voice = useVoice()
+  // Room left for the buttons in the top right corner: heart, music, voice.
+  const clearButtons = ['pr-14', 'pr-28', 'pr-42'][Number(music.available) + Number(voice.available)]
 
   // Back to the list if the todo being edited disappears (e.g. removed in HA).
   const editing = tab === 'edit' ? todos.find((t) => t.id === editingId) : null
@@ -59,7 +64,7 @@ export default function App() {
   }
   const visible = todos.filter(FILTERS.find((f) => f.id === filter).test).sort(byUpcoming)
   const compact = orientation === 'landscape'
-  const header = <Header now={now} clearMenu={!compact} wide={music.available} />
+  const header = <Header now={now} clearMenu={compact ? '' : clearButtons} />
   // The weather sits in the flourish under the date, once Home Assistant has a weather entity.
   // Landscape's sidebar is narrow, so there the chip takes the whole line.
   const flourish = (
@@ -86,6 +91,8 @@ export default function App() {
   )
   const menu = (
     <>
+      {/* Only once Home Assistant has the panel's voice assistant. */}
+      {voice.available && <VoiceButton state={voice.state} beside={music.available} onClick={voice.talk} />}
       {/* The music button only appears once Home Assistant has the panel's player. */}
       {music.available && (
         <MusicButton open={popover === 'music'} playing={music.playing} onClick={() => setPopover(popover === 'music' ? null : 'music')} />
@@ -139,7 +146,7 @@ export default function App() {
         </aside>
         <main className="flex min-h-0 flex-col gap-4">
           {/* Leaves room for the menu button in the top right corner. */}
-          <h2 className={`flex h-11 shrink-0 items-center ${music.available ? 'pr-28' : 'pr-14'} font-serif text-[26px] leading-none font-medium italic`}>
+          <h2 className={`flex h-11 shrink-0 items-center ${clearButtons} font-serif text-[26px] leading-none font-medium italic`}>
             {tabTitle(tab)}
           </h2>
           {tab === 'list' ? list : form}
