@@ -13,6 +13,7 @@ import { attachTileStream } from './stream.js'
 import { createWeather } from './weather.js'
 
 const log = (msg) => console.log(`[todo] ${msg}`)
+const quiet = () => {}
 const serverDir = path.dirname(fileURLToPath(import.meta.url))
 const distDir = path.join(serverDir, '..', 'dist')
 
@@ -49,6 +50,8 @@ function loadConfig() {
     // Empty finds the panel's Assist satellite and its Talk button by name.
     voiceSatellite: opts.voice_satellite || env.VOICE_SATELLITE || '',
     voiceButton: opts.voice_button || env.VOICE_BUTTON || '',
+    // Per-frame capture/send/ack timings, for measuring latency.
+    logFrames: opts.log_frames ?? env.LOG_FRAMES === '1',
     port: Number(env.PORT || 8099),
     secret: String(opts.display_secret || env.DISPLAY_SECRET || 'dev-secret'),
     orientation: opts.orientation || env.ORIENTATION || 'portrait',
@@ -527,6 +530,7 @@ const server = app.listen(config.port, async () => {
       executablePath: config.executablePath,
       channel: config.channel,
       log,
+      logFrame: config.logFrames ? log : quiet,
     })
     stream = attachTileStream({
       server,
@@ -534,6 +538,7 @@ const server = app.listen(config.port, async () => {
       isAuthorized,
       quality: config.quality,
       log,
+      logFrame: config.logFrames ? log : quiet,
       getVolume: () => settings.get().volume,
       // The panel's own volume wins: it may have been changed from Music Assistant.
       onPanelVolume: (volume) => settings.update({ volume }) && broadcastSettings(),

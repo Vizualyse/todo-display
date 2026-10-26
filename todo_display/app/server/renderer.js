@@ -8,7 +8,8 @@ export const HEIGHT = 480
  * Keeps one headless page open on the display URL and captures raw RGBA pixels
  * whenever the page reports a painted DOM change. Subscribers get every new frame.
  */
-export async function createRenderer({ url, executablePath, channel, log }) {
+/** `logFrame` gets the per-frame timing lines (the `log_frames` option); `log` everything else. */
+export async function createRenderer({ url, executablePath, channel, log, logFrame = () => {} }) {
   const browser = await chromium.launch({
     executablePath,
     channel,
@@ -53,7 +54,7 @@ export async function createRenderer({ url, executablePath, channel, log }) {
         const raw = await sharp(Buffer.from(data, 'base64')).ensureAlpha().raw().toBuffer()
         if (!frame || !raw.equals(frame.raw)) {
           frame = { raw, scroll, version: (frame?.version ?? 0) + 1, capturedAt: performance.now() }
-          log(`frame v${frame.version} captured in ${(performance.now() - started).toFixed(0)}ms`)
+          logFrame(`frame v${frame.version} captured in ${(performance.now() - started).toFixed(0)}ms`)
           for (const fn of listeners) fn(frame)
         }
       } while (again)

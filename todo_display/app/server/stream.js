@@ -207,7 +207,8 @@ async function encodeUpdate(frame, rects, full, quality, copy) {
   return Buffer.concat(parts)
 }
 
-export function attachTileStream({ server, renderer, isAuthorized, quality, log, getVolume, onPanelVolume }) {
+/** `logFrame` gets the per-update send/ack timing lines (the `log_frames` option); `log` everything else. */
+export function attachTileStream({ server, renderer, isAuthorized, quality, log, logFrame = () => {}, getVolume, onPanelVolume }) {
   const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false })
   const clients = new Set()
 
@@ -238,7 +239,7 @@ export function attachTileStream({ server, renderer, isAuthorized, quality, log,
         client.sent = null
         settle(client)
       } else if (cmd === 'ack') {
-        if (client.sentAt) log(`  v${a} acked after ${(performance.now() - client.sentAt).toFixed(0)}ms (${client.name})`)
+        if (client.sentAt) logFrame(`  v${a} acked after ${(performance.now() - client.sentAt).toFixed(0)}ms (${client.name})`)
         settle(client)
       } else if (cmd === 'v' && client.canMaster) {
         const volume = Number(a)
@@ -292,7 +293,7 @@ export function attachTileStream({ server, renderer, isAuthorized, quality, log,
     client.sentAt = performance.now()
     const sinceTouch = client.touchAt ? ` (touch→send ${(performance.now() - client.touchAt).toFixed(0)}ms)` : ''
     client.touchAt = 0
-    log(
+    logFrame(
       `v${frame.version} -> ${client.name}: ${copy ? `copy ${copy.w}x${copy.h} + ` : ''}${rects.length} tile(s), ` +
         `${(msg.length / 1024).toFixed(1)}KB, ` +
         `encoded ${(performance.now() - started).toFixed(0)}ms${sinceTouch}`,

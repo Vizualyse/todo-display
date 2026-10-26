@@ -88,6 +88,7 @@ listening without the wake word, or to stop the request that's running (it press
 | `weather_entity` | `""` | Weather for the brolly chip; empty uses the first `weather.*` entity |
 | `voice_satellite` | `""` | The panel's Assist satellite for the microphone button; empty finds it by name ("CrowPanel") |
 | `voice_button` | `""` | The panel's *Talk* button the microphone presses; empty finds it by name |
+| `log_frames` | `false` | Log each frame's capture, send and ack times (`LOG_FRAMES=1` locally), for latency work |
 
 ## Flash the panel
 

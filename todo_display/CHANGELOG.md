@@ -3,6 +3,12 @@
 Bump `version` in `config.yaml` with every change: Home Assistant only rebuilds
 the add-on when the version changes.
 
+## 0.12.1
+
+- Quieter log: the per-frame lines (`frame captured`, `tile(s)`, `acked after`)
+  are off unless the new option `log_frames` is on. They were three lines per
+  screen update. Connections, alarms and errors are still logged.
+
 ## 0.12.0
 
 - Voice: a microphone button left of the music button lights up while the panel's

@@ -55,8 +55,9 @@ CrowPanel 7.0" unless marked otherwise.
 - **Bigger network buffers.** Bigger TCP window (32KB), more Wi-Fi RX buffers and
   aggregation, allocated in PSRAM.
 - **Wi-Fi `power_save_mode: none`.** Power save adds 100ms+ to every exchange.
-- **Measure, don't guess.** The server logs `send→ack` per update and the panel
-  logs `drawn in Xms`. The difference between the two is network plus loop
+- **Measure, don't guess.** With `log_frames` on (`LOG_FRAMES=1` locally) the
+  server logs `send→ack` per update (off by default: three lines per frame
+  swamped the add-on log) and the panel logs `drawn in Xms`. The difference between the two is network plus loop
   scheduling.
 
 ## CrowPanel 7.0" hardware (ESP32-S3, N4R8)

@@ -1,5 +1,5 @@
 name: ToDo Display
-version: "0.12.0"
+version: "0.12.1"
 slug: todo_display
 description: Todo list rendered server-side and streamed as tiles to a CrowPanel display
 url: https://github.com/Vizualyse/todo-display
@@ -39,6 +39,8 @@ options:
   # Empty finds the panel's Assist satellite ("CrowPanel ...") and its Talk button.
   voice_satellite: ""
   voice_button: ""
+  # Log every frame's capture, send and ack times (for measuring latency).
+  log_frames: false
 schema:
   display_secret: password
   todo_entities:
@@ -53,3 +55,4 @@ schema:
   weather_entity: "match(^(weather\\.[a-z0-9_]+)?$)"
   voice_satellite: "match(^(assist_satellite\\.[a-z0-9_]+)?$)"
   voice_button: "match(^(button\\.[a-z0-9_]+)?$)"
+  log_frames: bool
