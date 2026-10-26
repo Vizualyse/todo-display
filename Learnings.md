@@ -158,6 +158,10 @@ CrowPanel 7.0" unless marked otherwise.
   mixer's maximum; 51 is clamped) and sends `on_tts_end`'s URL to
   `music_assistant.play_announcement` on the Echo. HA must allow the device to
   perform actions. Ducking only that source leaves chimes and music alone.
+- **`homeassistant.action` `data` values arrive as strings, and `"false"` is true.**
+  `use_pre_announce: "false"` reached Music Assistant as `pre-announce: True` and
+  cost ~2.2s per Echo reply (14.3s vs 12.1s for the whole call). Put booleans in
+  `data_template` (`"{{ false }}"`), which HA renders to a real type.
 - **Custom wake word "Hey Ned" (`esphome/wake_words/`) was trained locally** with
   microWakeWord on the AI VM's RTX 3060 (container `mww-train`, venvs and samples on
   the NAS `/mnt/nas/wakeword-train`, hot data on local `/srv/wakeword`). Scripts and
@@ -202,6 +206,14 @@ CrowPanel 7.0" unless marked otherwise.
   variable is parsed back into a dict, so build the JSON in the `rest_command` payload.
   Ollama (qwen3:8b) put "to-do list" items on the shopping list until the instructions
   named the lists; the to-do list (Married Life) also has aliases "To-do list", "Todo".
+- **The LLM doesn't know today's date.** qwen3:8b filed "tomorrow" as a 2023 date.
+  Put `{{ now() }}` in the Ollama instructions (they're a template), and the script
+  rejects past dates with an error naming today, so the model retries.
+- **Opening hours come from OpenStreetMap via Nominatim, not Overpass.** Overpass
+  took 46s for a "Sainsbury's within 5km" query; Nominatim (`extratags=1`, a viewbox
+  around `zone.home`, `bounded=1`) answers in <1s with `opening_hours`. Search the
+  name with its apostrophe ("Sainsbury's"): "sainsburys" found only a click & collect.
+  General web search goes to a SearXNG container on the AI VM (JSON format enabled).
 - **Backlight (GPIO2) is off unless a config drives it.** A test firmware without the
   `ledc` backlight light looks blank even though the framebuffer is drawn.
 - **RGB565 bands gradients.** Design with flat colours. The old dark radial
@@ -346,6 +358,14 @@ CrowPanel 7.0" unless marked otherwise.
 - **Compile firmware with the official Docker image, with caches in named volumes**
   (`esphome-build`, `esphome-pio`). A bind-mounted Windows folder made the
   ESP-IDF download crawl (424MB in 13 minutes).
+- **Pin the ESPHome image to the panel's version** (`ghcr.io/esphome/esphome:2026.9.1`,
+  see the device's firmware in HA). A fresh `:latest` failed dependency solving
+  (`sendspin-cpp 0.9.3` needs `esp_websocket_client >=1.6.1`, project pins 1.5.0).
+- **Stop API log containers with `docker stop`, not `timeout`.** `timeout docker run
+  ... logs` kills only the client; the container keeps its API connection. Ten
+  leftovers locked HA out of the panel, which looked like a dead mic: with HA
+  disconnected, `on_client_disconnected` stops wake word detection. Run them with
+  `--name` and `docker stop` them, and check `docker ps` afterwards.
 - **Flash natively with `esptool`.** Docker Desktop can't reach COM ports. The
   panel is `COM3`; write `firmware.factory.bin` at `0x0`.
 - Serial monitoring: opening the port with RTS toggled **resets the board**. To
@@ -354,11 +374,6 @@ CrowPanel 7.0" unless marked otherwise.
 - Long multi-file bash heredocs failed to parse here. Use the Write tool for file
   contents. Scripted edits through a heredoc also mangle escapes: a `\n` in a JS
   string reached the file as a real newline, and `\\.` in YAML didn't match. Use
-- **Stop API log containers with `docker stop`, not `timeout`.** `timeout docker run
-  ... logs` kills only the client; the container keeps its API connection. Ten
-  leftovers locked HA out of the panel, which looked like a dead mic: with HA
-  disconnected, `on_client_disconnected` stops wake word detection. Run them with
-  `--name` and `docker stop` them, and check `docker ps` afterwards.
   the Edit tool for anything with backslashes.
 - Windows Firewall: the Wi-Fi profile is *Public*, so port 8099 needed an inbound
   rule for local testing.
