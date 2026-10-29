@@ -234,6 +234,28 @@ CrowPanel 7.0" unless marked otherwise.
   logbook context (`automation_triggered`) in HA. The light's `on_turn_on` now
   starts `screen_idle`, so any turn-on times out.
 
+## Voice satellite (generic ESP32-S3 devkit, `esphome/voice-satellite.yaml`)
+
+- **AliExpress "N16R8" boards may not be N16R8.** Ours is an N8R2 (8MB flash, 2MB
+  *quad* PSRAM). Built for octal PSRAM it boot-looped silently right after the ROM
+  loaded the bootloader (`rst:0xc (RTC_SW_CPU_RST)` forever). Run `esptool flash-id`
+  first: it prints flash size and "Embedded PSRAM 2MB (AP_3v3)".
+- **Two USB-C sockets:** "USB" is the S3's native USB (the factory firmware ran
+  TinyUSB there, `303A:4001`, which ignores esptool's auto-reset); "COM" is a CH343
+  on UART0 with working auto-reset. Flash and log on the COM socket
+  (`logger: hardware_uart: UART0`).
+- **The 5V header pin has no power until the IN-OUT pads are bridged.** Symptom:
+  firmware logs show playback finishing normally, but the MAX98357A is silent and
+  its VIN reads ~2.7V, which is 3.3V leaking in through the I2S pins' protection
+  diodes, just above the amp's 2.5V cut-out. Probing a pin makes it buzz. With the
+  pads bridged, VIN is 5V and it plays.
+- **Copying files into the `esphome-build` volume from Git Bash needs
+  `MSYS_NO_PATHCONV=1`**, or `/src/...` turns into `C:/Program Files/Git/src/...`, the
+  copy fails, and the old firmware gets built and flashed.
+- **Adding an ESPHome device to HA by REST:** `POST /api/config/config_entries/flow`
+  `{"handler":"esphome"}`, then `{"host","port"}`, then `{"noise_psk": <key>}` (not
+  `encryption_key`).
+
 ## ESPHome / ESP-IDF build gotchas
 
 - `esp_crt_bundle.h` isn't on a custom component's include path, and the bundle

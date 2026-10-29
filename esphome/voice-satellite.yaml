@@ -1,0 +1,193 @@
+# Screenless voice satellite: generic ESP32-S3 devkit (44-pin, two USB-C),
+# INMP441 I2S mic and MAX98357A I2S amp. Wake word on the device, speech to HA Assist,
+# replies and Music Assistant (Sendspin) audio on the amp.
+#
+# Wiring:
+#   INMP441:   VDD 3V3, GND, L/R GND, WS GPIO4, SCK GPIO5, SD GPIO6
+#   MAX98357A: VIN 5V, GND, LRC GPIO15, BCLK GPIO7, DIN GPIO16, SD/GAIN unconnected
+#   The 5V pin is dead until the board's IN-OUT pads are bridged with solder.
+# Avoid GPIO26-32 (flash), 33-37 (octal PSRAM on N16R8 boards), 19/20 (USB),
+# 43/44 (UART0), 0/3/45/46 (straps).
+
+substitutions:
+  name: voice-satellite
+
+esphome:
+  name: ${name}
+  friendly_name: Voice Satellite
+  includes:
+    - chimes.h
+    - wake_chime.h
+  on_boot:
+    # Late, so the speaker is set up before it's started.
+    priority: -100
+    then:
+      # Keep the chime speaker running (silent) so the wake chime plays at once
+      # instead of being lost while the I2S driver starts.
+      - lambda: |-
+          id(fx_spk).set_audio_stream_info(chimes::stream_info());
+          id(fx_spk).start();
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  # Sold as N16R8, but ours is an N8R2: 8MB flash, 2MB quad PSRAM (esptool flash-id).
+  flash_size: 8MB
+  framework:
+    type: esp-idf
+    sdkconfig_options:
+      CONFIG_ESP32S3_DEFAULT_CPU_FREQ_240: y
+      CONFIG_ESP32S3_DATA_CACHE_64KB: y
+      CONFIG_ESP32S3_DATA_CACHE_LINE_64B: y
+
+psram:
+  mode: quad
+  speed: 80MHz
+
+# Logs on the "COM" USB-C socket (CH343 bridge on UART0); the other socket is native USB.
+logger:
+  level: DEBUG
+  hardware_uart: UART0
+
+api:
+  encryption:
+    key: !secret satellite_api_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  power_save_mode: none
+
+i2s_audio:
+  - id: i2s_out
+    i2s_lrclk_pin: GPIO15
+    i2s_bclk_pin: GPIO7
+  - id: i2s_in
+    i2s_lrclk_pin: GPIO4
+    i2s_bclk_pin: GPIO5
+
+microphone:
+  - platform: i2s_audio
+    id: mic
+    i2s_audio_id: i2s_in
+    i2s_din_pin: GPIO6
+    adc_type: external
+    # L/R tied to GND.
+    channel: left
+    # 24-bit samples in 32-bit slots.
+    bits_per_sample: 32bit
+    sample_rate: 16000
+
+speaker:
+  - platform: i2s_audio
+    id: amp
+    i2s_audio_id: i2s_out
+    dac_type: external
+    i2s_dout_pin: GPIO16
+    channel: mono
+    sample_rate: 48000
+    bits_per_sample: 16bit
+  - platform: mixer
+    id: amp_mixer
+    output_speaker: amp
+    task_stack_in_psram: true
+    source_speakers:
+      - id: fx_spk
+        timeout: never
+        # Longer than the wake chime (0.35s), queued in one go.
+        buffer_duration: 500ms
+      - id: music_spk
+      - id: announce_spk
+
+# Music from Music Assistant over Sendspin; HA announcements and Assist replies by URL.
+sendspin:
+  task_stack_in_psram: true
+
+media_source:
+  - platform: sendspin
+    id: sendspin_source
+    task_stack_in_psram: true
+    sample_rate: 48000
+  - platform: audio_http
+    id: announce_http
+    task_stack_in_psram: true
+
+media_player:
+  - platform: speaker_source
+    id: player
+    name: Speaker
+    volume_initial: 50%
+    media_pipeline:
+      speaker: music_spk
+      sources:
+        - sendspin_source
+      num_channels: 1
+    announcement_pipeline:
+      speaker: announce_spk
+      sources:
+        - announce_http
+      format: FLAC
+      sample_rate: 48000
+      num_channels: 1
+
+micro_wake_word:
+  id: mww
+  microphone:
+    microphone: mic
+    gain_factor: 4
+  task_stack_in_psram: true
+  models:
+    - model: okay_nabu
+    # HA's "Wake word" selects decide which models actually run.
+    - model: wake_words/hey_ned.json
+      id: hey_ned
+  on_wake_word_detected:
+    - lambda: wake_chime::play(id(fx_spk));
+    - voice_assistant.start:
+        wake_word: !lambda return wake_word;
+
+voice_assistant:
+  id: va
+  microphone:
+    microphone: mic
+    gain_factor: 4
+  micro_wake_word: mww
+  media_player: player
+  noise_suppression_level: 2
+  auto_gain: 31dBFS
+  # Listen for the wake word only while HA is connected to take the request.
+  on_client_connected:
+    - micro_wake_word.start:
+  on_client_disconnected:
+    - voice_assistant.stop:
+    - micro_wake_word.stop:
+  # The wake word stops after a detection; listen again once the request is done.
+  on_end:
+    - wait_until:
+        not:
+          voice_assistant.is_running:
+    - micro_wake_word.start:
+
+button:
+  - platform: template
+    id: talk
+    name: Talk
+    icon: mdi:microphone
+    on_press:
+      - if:
+          condition: voice_assistant.is_running
+          then:
+            - voice_assistant.stop:
+            - wait_until:
+                not:
+                  voice_assistant.is_running:
+            - micro_wake_word.start:
+          else:
+            - micro_wake_word.stop:
+            - voice_assistant.start:
+  - platform: restart
+    name: Restart
