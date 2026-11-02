@@ -406,6 +406,12 @@ CrowPanel 7.0" unless marked otherwise.
   `--name` and `docker stop` them, and check `docker ps` afterwards.
 - **Flash natively with `esptool`.** Docker Desktop can't reach COM ports. The
   panel is `COM3`; write `firmware.factory.bin` at `0x0`.
+- **OTA from Docker works without a COM port:** mount `esphome-build:/config` and
+  `esphome-pio:/root/.platformio`, then `run <device>.yaml --device <ip> --no-logs`
+  (panel 192.168.8.157, satellite 192.168.8.148). If CMake says the bootloader
+  source "does not match the source ... used to generate cache", an older build used
+  a different IDF path (`/root/.cache/esphome`). Run `esphome clean <device>.yaml`
+  once; deleting only `build/bootloader` leaves stale stamps and still fails.
 - Serial monitoring: opening the port with RTS toggled **resets the board**. To
   watch without rebooting, open with `dtr=False, rts=False`. Set
   `PYTHONIOENCODING=utf-8` (logs contain Unicode).
