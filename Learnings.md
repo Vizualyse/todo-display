@@ -170,7 +170,8 @@ CrowPanel 7.0" unless marked otherwise.
   generator, random speaker pairs, plus 9 en_GB voices) and ~7,000 near-miss
   negatives ("hey Ted", "hey Fred", "ned"...). Quantised streaming test: cutoff 0.81
   missed 32% at 0.19 false wakes/h of dinner-party audio, 0.73 missed 28% at 0.56/h;
-  shipped at 0.7, and it wakes for a real voice on the panel. Costs ~62KB:
+  shipped at 0.7, and it wakes for a real voice on the panel. Lowered to 0.65
+  (2026-11-02) to make it wake more readily. Costs ~62KB:
   flash 85.5% -> 89.3%. Gotchas that cost time:
   - **Home Assistant chooses which wake words run.** The device's two "Wake word"
     selects (`select.<device>_wake_word`, `_wake_word_2`) enable models; one that
