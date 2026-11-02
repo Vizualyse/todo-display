@@ -270,9 +270,9 @@ micro_wake_word:
   task_stack_in_psram: true
   models:
     - model: okay_nabu
-    # Trained locally with microWakeWord (wake_words/training/). Tune
-    # `probability_cutoff` in its JSON if it misses (lower) or wakes on its own
-    # (higher). HA's "Wake word" selects decide which models actually run.
+    # Trained locally with microWakeWord (wake_words/training/). Tune it with the
+    # "Hey Ned cutoff" number in HA: lower if it misses, higher if it wakes on
+    # its own. HA's "Wake word" selects decide which models actually run.
     - model: wake_words/hey_ned.json
       id: hey_ned
   on_wake_word_detected:
@@ -342,6 +342,28 @@ voice_assistant:
 
 # The page's microphone button presses this (through the add-on and HA): start
 # listening as if the wake word was heard, or stop the request that's running.
+# "Hey Ned" cutoff, tunable live from HA: lower wakes more readily, higher
+# ignores more chatter. Overrides probability_cutoff in hey_ned.json and
+# survives reboots.
+number:
+  - platform: template
+    id: hey_ned_cutoff
+    name: Hey Ned cutoff
+    icon: mdi:ear-hearing
+    entity_category: config
+    mode: slider
+    min_value: 0.30
+    max_value: 0.95
+    step: 0.01
+    initial_value: 0.55
+    optimistic: true
+    restore_value: true
+    on_value:
+      - lambda: id(hey_ned)->set_probability_cutoff((uint8_t) (x * 255.0f));
+      - logger.log:
+          format: "Hey Ned cutoff %.2f"
+          args: [x]
+
 button:
   - platform: template
     id: talk

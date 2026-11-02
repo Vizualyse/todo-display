@@ -172,6 +172,28 @@ voice_assistant:
           voice_assistant.is_running:
     - micro_wake_word.start:
 
+# "Hey Ned" cutoff, tunable live from HA: lower wakes more readily, higher
+# ignores more chatter. Overrides probability_cutoff in hey_ned.json and
+# survives reboots.
+number:
+  - platform: template
+    id: hey_ned_cutoff
+    name: Hey Ned cutoff
+    icon: mdi:ear-hearing
+    entity_category: config
+    mode: slider
+    min_value: 0.30
+    max_value: 0.95
+    step: 0.01
+    initial_value: 0.55
+    optimistic: true
+    restore_value: true
+    on_value:
+      - lambda: id(hey_ned)->set_probability_cutoff((uint8_t) (x * 255.0f));
+      - logger.log:
+          format: "Hey Ned cutoff %.2f"
+          args: [x]
+
 button:
   - platform: template
     id: talk
