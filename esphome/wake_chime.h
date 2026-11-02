@@ -9,6 +9,9 @@
 namespace wake_chime {
 
 static constexpr int LEN = chimes::RATE * 0.35f;
+// About -9dB (shape() squares it). At full scale the chime's peak current browned out
+// the board on cheap USB supplies.
+static constexpr float VOLUME = 0.6f;
 
 static void play(esphome::speaker::Speaker *spk) {
   static float *mix = static_cast<float *>(heap_caps_malloc(LEN * sizeof(float), MALLOC_CAP_SPIRAM));
@@ -23,7 +26,7 @@ static void play(esphome::speaker::Speaker *spk) {
   for (int i = 0; i < LEN; i++)
     max = std::max(max, fabsf(mix[i]));
   for (int i = 0; i < LEN; i++)
-    pcm[i] = chimes::shape(mix[i] / max, 1.0f);
+    pcm[i] = chimes::shape(mix[i] / max, VOLUME);
   spk->play(reinterpret_cast<const uint8_t *>(pcm), LEN * sizeof(int16_t));
 }
 

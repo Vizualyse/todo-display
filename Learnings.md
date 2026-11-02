@@ -249,6 +249,20 @@ CrowPanel 7.0" unless marked otherwise.
   its VIN reads ~2.7V, which is 3.3V leaking in through the I2S pins' protection
   diodes, just above the amp's 2.5V cut-out. Probing a pin makes it buzz. With the
   pads bridged, VIN is 5V and it plays.
+- **A cheap USB cable makes it reboot on every wake word.** Symptom: half the chime,
+  then a glitch. The API log shows the wake word, `i2s_audio.speaker: Starting`,
+  `STREAMING_MICROPHONE`, then a disconnect, and the device comes back with a fresh
+  uptime (`Last reset too quick` in safe_mode). The amp driving the chime while Wi-Fi
+  starts streaming the mic is the peak draw, and a thin cable can't supply it. The
+  API log gives no reset reason. Try a good cable before suspecting the firmware.
+  The same cable couldn't carry data either: no COM port showed up on Windows.
+- **Leave the MAX98357A's GAIN pin unconnected (9dB).** GAIN to GND (12dB) browned
+  the board out playing loud music even on a good PD charger: it peaked at 1.6A
+  before resetting (the amp clips into the 4Ω speaker). At 9dB the peak is ~1.1A,
+  and on a 1A-rated USB brick it still browned out now and then.
+  The charger isn't the limit; the voltage drops in the devkit's VBUS path, the 5V
+  pin and the jumpers. For more volume, feed the amp's VIN straight from the supply
+  and put 470-1000µF across it.
 - **Copying files into the `esphome-build` volume from Git Bash needs
   `MSYS_NO_PATHCONV=1`**, or `/src/...` turns into `C:/Program Files/Git/src/...`, the
   copy fails, and the old firmware gets built and flashed.
